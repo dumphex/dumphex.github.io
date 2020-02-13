@@ -99,5 +99,5 @@ theme: next
 ## Docs: https://hexo.io/docs/deployment.html
 deploy:
   type: 'git'
-  repo: git@github.com:younghuster/younghuster.github.io.git
+  repo: git@github.com:dumphex/dumphex.github.io.git
   branch: master
