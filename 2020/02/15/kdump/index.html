@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"dumphex.github.io","root":"/","scheme":"Gemini","version":"7.7.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文将深入学习kdump相关代码，梳理kdump整个流程。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="深入学习kdump原理">
+<meta property="og:url" content="https://dumphex.github.io/2020/02/15/kdump/index.html">
+<meta property="og:site_name" content="程序员自我修养">
+<meta property="og:description" content="本文将深入学习kdump相关代码，梳理kdump整个流程。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/006CVPwLly1g9ac5zupkdj30qp0hbac4.jpg">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/006CVPwLly1g9cx07tykjj30qo0k0754.jpg">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/006CVPwLly1g9bq9vje9wj30qo0k0q3t.jpg">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/006CVPwLly1g9dl6dca38j30qo0k00tp.jpg">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/006CVPwLly1g9eqc3m581j30qo0k00t5.jpg">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/006CVPwLly1g9eqcpu0r1j30qo0k0my3.jpg">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+<meta property="article:published_time" content="2020-02-15T10:00:00.000Z">
+<meta property="article:modified_time" content="2020-02-15T10:12:56.802Z">
+<meta property="article:author" content="dumphex">
+<meta property="article:tag" content="kernel">
+<meta property="article:tag" content="kdump">
+<meta property="article:tag" content="crash">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://ww1.sinaimg.cn/large/006CVPwLly1g9ac5zupkdj30qp0hbac4.jpg">
+
+<link rel="canonical" href="https://dumphex.github.io/2020/02/15/kdump/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true
+  };
+</script>
+
+  <title>深入学习kdump原理 | 程序员自我修养</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">程序员自我修养</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-sitemap">
+
+    <a href="/sitemap.xml" rel="section"><i class="fa fa-fw fa-sitemap"></i>站点地图</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+
+</nav>
+  <div class="site-search">
+    <div class="popup search-popup">
+    <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocorrect="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result"></div>
+
+</div>
+<div class="search-pop-overlay"></div>
+
+  </div>
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://dumphex.github.io/2020/02/15/kdump/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="dumphex">
+      <meta itemprop="description" content="专注于Linux/Android/C/C++等">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="程序员自我修养">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          深入学习kdump原理
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-02-15 18:00:00 / 修改时间：18:12:56" itemprop="dateCreated datePublished" datetime="2020-02-15T18:00:00+08:00">2020-02-15</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/kernel/" itemprop="url" rel="index">
+                    <span itemprop="name">kernel</span>
+                  </a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文将深入学习kdump相关代码，梳理kdump整个流程。</p>
+<a id="more"></a>
+
+
+
+<h1 id="Overview"><a href="#Overview" class="headerlink" title="Overview"></a>Overview</h1><h2 id="什么是kdump"><a href="#什么是kdump" class="headerlink" title="什么是kdump"></a>什么是kdump</h2><ul>
+<li><p>kernel崩溃时， 创建核心存储(core dump)</p>
+</li>
+<li><p>kdump导出/proc/vmcore，便于离线分析crash原因</p>
+</li>
+</ul>
+<h2 id="kernel的分类"><a href="#kernel的分类" class="headerlink" title="kernel的分类"></a>kernel的分类</h2><ul>
+<li><p>first kernel(production kernel)</p>
+</li>
+<li><p>second kernel(dump-capture kernel)</p>
+</li>
+</ul>
+<h2 id="kdump流程"><a href="#kdump流程" class="headerlink" title="kdump流程"></a>kdump流程</h2><p><img src="http://ww1.sinaimg.cn/large/006CVPwLly1g9ac5zupkdj30qp0hbac4.jpg" alt="kdump_sub.png"></p>
+<h2 id="版本信息"><a href="#版本信息" class="headerlink" title="版本信息"></a>版本信息</h2><ul>
+<li>kernel版本是4.9.38</li>
+<li>kexec-tools版本是v2.0.16</li>
+<li>architecture是arm64</li>
+</ul>
+<h1 id="kexec"><a href="#kexec" class="headerlink" title="kexec"></a>kexec</h1><h2 id="kexec-overview"><a href="#kexec-overview" class="headerlink" title="kexec overview"></a>kexec overview</h2><h3 id="kexec功能"><a href="#kexec功能" class="headerlink" title="kexec功能"></a>kexec功能</h3><p>kexec主要有两个功能</p>
+<ul>
+<li><p>快速切换kernel</p>
+</li>
+<li><p>kdump</p>
+</li>
+</ul>
+<h3 id="代码下载-编译"><a href="#代码下载-编译" class="headerlink" title="代码下载/编译"></a>代码下载/编译</h3><p>kexec可通过github下载</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> git <span class="built_in">clone</span> https://github.com/horms/kexec-tools.git</span></span><br></pre></td></tr></table></figure>
+
+
+
+<p>下载仓库后， 可交叉编译出arm64可执行文件</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./bootstrap</span></span><br><span class="line"><span class="meta">$</span><span class="bash"> mkdir timzhang</span></span><br><span class="line"><span class="meta">$</span><span class="bash"> ./configure --prefix=/home/timzhang/work/project/github/kexec-tools/timzhang --build=x86_64-linux-gnu --host=aarch64-linux-gnu  --target=aarch64-linux-gnu</span></span><br><span class="line"><span class="meta">$</span><span class="bash"> make</span></span><br><span class="line"><span class="meta">$</span><span class="bash"> make install</span></span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="kexec运行"><a href="#kexec运行" class="headerlink" title="kexec运行"></a>kexec运行</h3><ul>
+<li>快速切换kernel</li>
+</ul>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> sudo ./kexec -l ./Image --initrd=kdump.cpio --dtb=./chip_asic.dtb --append=<span class="string">"1 maxcpus=1 reset_devices console=ttyS0,115200 earlycon debug user_debug=31 loglevel=10"</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">$</span><span class="bash"> sudo ./kexec -e</span></span><br></pre></td></tr></table></figure>
+
+
+
+<ul>
+<li>kdump</li>
+</ul>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> sudo ./kexec -p ./Image --initrd=./kdump.cpio --dtb=./chip_asic.dtb --append=<span class="string">"1 maxcpus=1 reset_devices console=ttyS0,115200 earlycon debug user_debug=31 loglevel=10"</span></span></span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>注: Image和dtb文件最好和当前kernel版本保持一致！</p>
+</blockquote>
+<h2 id="kexec用户态"><a href="#kexec用户态" class="headerlink" title="kexec用户态"></a>kexec用户态</h2><h3 id="配置解析"><a href="#配置解析" class="headerlink" title="配置解析"></a>配置解析</h3><p>判断是否加载crashkernel， 相关函数实现在<strong>is_crashkernel_mem_reserved</strong>()</p>
+<p>该函数主要操作如下</p>
+<ul>
+<li>读取/proc/iomem</li>
+<li>调用回调函数， 处理Crash kernel/System RAM/Kernel code/Kernel data等感兴趣的内存部分.</li>
+</ul>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash"> cat /proc/iomem </span></span><br><span class="line">... ...</span><br><span class="line">105100000-2ffffffff : System RAM</span><br><span class="line">300020000-3ffffffff : System RAM</span><br><span class="line">  300080000-300aaffff : Kernel code</span><br><span class="line">  300b40000-300c85fff : Kernel data</span><br><span class="line">  310000000-313ffffff : Crash kernel</span><br><span class="line">408000000-4ffffffff : System RAM</span><br></pre></td></tr></table></figure>
+
+
+
+<p>其中， 除了crash kernel部分， System RAM其余部分都是需要被dump的。</p>
+<p><img src="http://ww1.sinaimg.cn/large/006CVPwLly1g9cx07tykjj30qo0k0754.jpg" alt="memory.jpg"></p>
+<h3 id="收集segment"><a href="#收集segment" class="headerlink" title="收集segment"></a>收集segment</h3><p>kexec用户态的信息， 存储在<strong>struct kexec_info</strong>里面。 </p>
+<p>struct kexec_info结构体的定义如下:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">kexec_info</span> &#123;</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">kexec_segment</span> *<span class="title">segment</span>;</span></span><br><span class="line">        <span class="keyword">int</span> nr_segments;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">memory_range</span> *<span class="title">memory_range</span>;</span></span><br><span class="line">        <span class="keyword">int</span> memory_ranges;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">memory_range</span> *<span class="title">crash_range</span>;</span></span><br><span class="line">        <span class="keyword">int</span> nr_crash_ranges;</span><br><span class="line">        <span class="keyword">void</span> *entry;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">mem_ehdr</span> <span class="title">rhdr</span>;</span></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> backup_start;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> kexec_flags;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> backup_src_start;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> backup_src_size;</span><br><span class="line">        <span class="comment">/* Set to 1 if we are using kexec file syscall */</span></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> file_mode :<span class="number">1</span>; </span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Filled by kernel image processing code */</span></span><br><span class="line">        <span class="keyword">int</span> initrd_fd;</span><br><span class="line">        <span class="keyword">char</span> *command_line;</span><br><span class="line">        <span class="keyword">int</span> command_line_len;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>kexec在用户态， 主要是集齐5个segment, 它们分别是</p>
+<ul>
+<li><p>kernel segment</p>
+</li>
+<li><p>ELF core header segment</p>
+</li>
+<li><p>initrd segment</p>
+</li>
+<li><p>dtb segment</p>
+</li>
+<li><p>purgatory segment</p>
+</li>
+</ul>
+<h4 id="kernel-segment"><a href="#kernel-segment" class="headerlink" title="kernel segment"></a>kernel segment</h4><p><strong>功能</strong>: 读取kexec运行时指定的kernel image</p>
+<table>
+<thead>
+<tr>
+<th>file type</th>
+<th>probe</th>
+<th>load</th>
+<th>usage</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>vmlinux</td>
+<td>elf_arm64_probe</td>
+<td>elf_arm64_load</td>
+<td>elf_arm64_usage</td>
+</tr>
+<tr>
+<td>Image</td>
+<td>image_arm64_probe</td>
+<td>image_arm64_load</td>
+<td>image_arm64_usage</td>
+</tr>
+<tr>
+<td>uImage</td>
+<td>uImage_arm64_probe</td>
+<td>uImage_arm64_load</td>
+<td>uImage_arm64_usage</td>
+</tr>
+</tbody></table>
+<h4 id="ELF-core-header-segment"><a href="#ELF-core-header-segment" class="headerlink" title="ELF core header segment"></a>ELF core header segment</h4><p><strong>功能</strong>: 为kdump生成vmcore准备ELF core header</p>
+<p>构造ELF core header segment时， 主要构造了ELF header和program header</p>
+<p>其中， program header包含了PT_NOTE和PT_LOAD两类</p>
+<table>
+<thead>
+<tr>
+<th>program header 类型</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PT_NOTE</td>
+<td>cpu, vmcoreinfo</td>
+</tr>
+<tr>
+<td>PT_LOAD</td>
+<td>kernel text, system ram chunk</td>
+</tr>
+</tbody></table>
+<p>构造结束后， 将ELF core header的起始地址保存到<strong>elfcorehdr_mem</strong></p>
+<h4 id="initrd-segment"><a href="#initrd-segment" class="headerlink" title="initrd segment"></a>initrd segment</h4><p><strong>功能</strong>: 读取kexec运行时指定的initrd</p>
+<h4 id="dtb-segment"><a href="#dtb-segment" class="headerlink" title="dtb segment"></a>dtb segment</h4><p><strong>功能</strong>: 读取kexec运行时指定的dtb</p>
+<p>设置属性</p>
+<ul>
+<li><p><strong>“linux,elfcorehdr”</strong>: 将ELF core header地址(<strong>elfcorehdr_mem</strong>)设置到此属性</p>
+</li>
+<li><p><strong>“linux,usable-memory-range”</strong>: 将<strong>crash_reserved_mem</strong>设置到此属性(指定capture kernel的总内存大小)</p>
+</li>
+</ul>
+<h4 id="purgatory-segment"><a href="#purgatory-segment" class="headerlink" title="purgatory segment"></a>purgatory segment</h4><p><strong>功能</strong>: 用于完成crash kernel完整性校验和kernel跳转</p>
+<p>主要流程如下</p>
+<ul>
+<li>purgatory相关源文件生成purgatory.ro</li>
+<li>bin-to-hex将purgatory.ro转换成purgatory.c(ELF内容格式到purgatory[])</li>
+<li>purgatory.c和其它源文件编译生成kexec可执行程序</li>
+<li>kexec在运行过程中， 构造purgatory可重定位对象，放到purgatory buffer</li>
+</ul>
+<p>purgatory.ro中有重要的三个符号</p>
+<table>
+<thead>
+<tr>
+<th>符号</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>purgatory_start</td>
+<td>purgatory的启动地址, 保存到info-&gt;entry字段</td>
+</tr>
+<tr>
+<td>arm64_kernel_entry</td>
+<td>capture kernel代码段首地址</td>
+</tr>
+<tr>
+<td>arm64_dtb_addr</td>
+<td>capture kernel依赖的dtb地址</td>
+</tr>
+</tbody></table>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> aarch64-linux-gnu-readelf -s purgatory.ro.sym |grep -e purgatory_start -e arm64_</span></span><br><span class="line">    66: 0000000000000120     8 NOTYPE  GLOBAL DEFAULT    4 arm64_kernel_entry</span><br><span class="line">    68: 0000000000000660    36 NOTYPE  GLOBAL DEFAULT    1 purgatory_start</span><br><span class="line">    69: 0000000000000128     8 NOTYPE  GLOBAL DEFAULT    4 arm64_dtb_addr</span><br></pre></td></tr></table></figure>
+
+<h4 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h4><p>5个segment收集完毕后， info.segment[]的布局如下</p>
+<p><img src="http://ww1.sinaimg.cn/large/006CVPwLly1g9bq9vje9wj30qo0k0q3t.jpg" alt="kexec_info_segment_01.jpg"></p>
+<h3 id="更新哈希值"><a href="#更新哈希值" class="headerlink" title="更新哈希值"></a>更新哈希值</h3><p>调用update_purgatory()， 计算除了purgatory之外其它4个segment的sha256值, 并存储到<strong>sha256_digest</strong>符号</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> aarch64-linux-gnu-readelf -s purgatory.ro.sym |grep -e <span class="string">" sha256_regions"</span> -e <span class="string">" sha256_digest"</span></span></span><br><span class="line">    56: 0000000000000000   256 OBJECT  GLOBAL DEFAULT    4 sha256_regions</span><br><span class="line">    57: 0000000000000100    32 OBJECT  GLOBAL DEFAULT    4 sha256_digest</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="开始加载"><a href="#开始加载" class="headerlink" title="开始加载"></a>开始加载</h3><p>kexex通过kexec_load函数中的系统调用来完成最后的加载。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">long</span> <span class="title">kexec_load</span><span class="params">(<span class="keyword">void</span> *entry, <span class="keyword">unsigned</span> <span class="keyword">long</span> nr_segments,</span></span></span><br><span class="line"><span class="function"><span class="params">                        struct kexec_segment *segments, <span class="keyword">unsigned</span> <span class="keyword">long</span> flags)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">return</span> (<span class="keyword">long</span>) syscall(__NR_kexec_load, entry, nr_segments, segments, flags);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="kexec内核态"><a href="#kexec内核态" class="headerlink" title="kexec内核态"></a>kexec内核态</h2><h3 id="crashkernel"><a href="#crashkernel" class="headerlink" title="crashkernel"></a>crashkernel</h3><p>crashkernel表示给capture kernel预留的内存.</p>
+<p>在打开kdump的kernel中， 会有类似如下的启动log</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">... ...</span><br><span class="line">crashkernel reserved: 0x0000000310000000 - 0x0000000314000000 (64 MB)</span><br><span class="line">... ...</span><br><span class="line">Kernel command line: console&#x3D;ttyS0,115200 earlycon user_debug&#x3D;31 crashkernel&#x3D;64M@0x310000000</span><br><span class="line">... ...</span><br></pre></td></tr></table></figure>
+
+<p>这里给capture  kernel配置的起始物理地址0x310000000, 大小为64MB.</p>
+<p>具体在kernel代码中， 是通过<strong>reserve_crashkernel</strong>()来完成的</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">void</span> __init <span class="title">reserve_crashkernel</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="keyword">long</span> crash_base, crash_size;</span><br><span class="line">        <span class="keyword">int</span> ret;</span><br><span class="line"></span><br><span class="line">        ret = parse_crashkernel(boot_command_line, memblock_phys_mem_size(),</span><br><span class="line">                                &amp;crash_size, &amp;crash_base);</span><br><span class="line">        <span class="comment">/* no crashkernel= or invalid value specified */</span></span><br><span class="line">        <span class="keyword">if</span> (ret || !crash_size)</span><br><span class="line">                <span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">        crash_size = PAGE_ALIGN(crash_size);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (crash_base == <span class="number">0</span>) &#123;</span><br><span class="line">                <span class="comment">/* Current arm64 boot protocol requires 2MB alignment */</span></span><br><span class="line">                crash_base = memblock_find_in_range(<span class="number">0</span>, ARCH_LOW_ADDRESS_LIMIT,</span><br><span class="line">                                crash_size, SZ_2M);</span><br><span class="line">                <span class="keyword">if</span> (crash_base == <span class="number">0</span>) &#123;</span><br><span class="line">                        pr_warn(<span class="string">"cannot allocate crashkernel (size:0x%llx)\n"</span>,</span><br><span class="line">                                crash_size);</span><br><span class="line">                        <span class="keyword">return</span>;</span><br><span class="line">                &#125;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="comment">/* User specifies base address explicitly. */</span></span><br><span class="line">                <span class="keyword">if</span> (!memblock_is_region_memory(crash_base, crash_size)) &#123;</span><br><span class="line">                        pr_warn(<span class="string">"cannot reserve crashkernel: region is not memory\n"</span>);</span><br><span class="line">                        <span class="keyword">return</span>;</span><br><span class="line">                &#125;</span><br><span class="line"></span><br><span class="line">                <span class="keyword">if</span> (memblock_is_region_reserved(crash_base, crash_size)) &#123;</span><br><span class="line">                        pr_warn(<span class="string">"cannot reserve crashkernel: region overlaps reserved memory\n"</span>);</span><br><span class="line">                        <span class="keyword">return</span>;</span><br><span class="line">                &#125;</span><br><span class="line"></span><br><span class="line">                <span class="keyword">if</span> (!IS_ALIGNED(crash_base, SZ_2M)) &#123;</span><br><span class="line">                        pr_warn(<span class="string">"cannot reserve crashkernel: base address is not 2MB aligned\n"</span>);</span><br><span class="line">                        <span class="keyword">return</span>;</span><br><span class="line">                &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        memblock_reserve(crash_base, crash_size);</span><br><span class="line"></span><br><span class="line">        pr_info(<span class="string">"crashkernel reserved: 0x%016llx - 0x%016llx (%lld MB)\n"</span>,</span><br><span class="line">                crash_base, crash_base + crash_size, crash_size &gt;&gt; <span class="number">20</span>);</span><br><span class="line"></span><br><span class="line">        crashk_res.start = crash_base;</span><br><span class="line">        crashk_res.<span class="built_in">end</span> = crash_base + crash_size - <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>内核态是通过解析boot_command_line来获取crashkernel的起始地址和大小，并保存到<strong>crashk_res</strong>结构体中。</p>
+<h3 id="sys-kexec-load"><a href="#sys-kexec-load" class="headerlink" title="sys_kexec_load"></a>sys_kexec_load</h3><p>kexec在用户态调用<strong>NR_kexec_load(104)</strong>的系统调用后，最终会执行到kernel态的sys_kexec_load</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE4(kexec_load, <span class="keyword">unsigned</span> <span class="keyword">long</span>, entry, <span class="keyword">unsigned</span> <span class="keyword">long</span>, nr_segments,</span><br><span class="line">                struct kexec_segment __user *, segments, <span class="keyword">unsigned</span> <span class="keyword">long</span>, flags)</span><br><span class="line">&#123;</span><br><span class="line">        <span class="keyword">int</span> result;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* We only trust the superuser with rebooting the system. */</span></span><br><span class="line">        <span class="keyword">if</span> (!capable(CAP_SYS_BOOT) || kexec_load_disabled)</span><br><span class="line">                <span class="keyword">return</span> -EPERM;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/*  </span></span><br><span class="line"><span class="comment">         * Verify we have a legal set of flags</span></span><br><span class="line"><span class="comment">         * This leaves us room for future extensions.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="keyword">if</span> ((flags &amp; KEXEC_FLAGS) != (flags &amp; ~KEXEC_ARCH_MASK))</span><br><span class="line">                <span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Verify we are on the appropriate architecture */</span></span><br><span class="line">        <span class="keyword">if</span> (((flags &amp; KEXEC_ARCH_MASK) != KEXEC_ARCH) &amp;&amp;</span><br><span class="line">                ((flags &amp; KEXEC_ARCH_MASK) != KEXEC_ARCH_DEFAULT))</span><br><span class="line">                <span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Put an artificial cap on the number</span></span><br><span class="line"><span class="comment">         * of segments passed to kexec_load.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="keyword">if</span> (nr_segments &gt; KEXEC_SEGMENT_MAX)</span><br><span class="line">                <span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Because we write directly to the reserved memory</span></span><br><span class="line"><span class="comment">         * region when loading crash kernels we need a mutex here to</span></span><br><span class="line"><span class="comment">         * prevent multiple crash  kernels from attempting to load</span></span><br><span class="line"><span class="comment">         * simultaneously, and to prevent a crash kernel from loading</span></span><br><span class="line"><span class="comment">         * over the top of a in use crash kernel.</span></span><br><span class="line"><span class="comment">         *</span></span><br><span class="line"><span class="comment">         * KISS: always take the mutex.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="keyword">if</span> (!mutex_trylock(&amp;kexec_mutex))</span><br><span class="line">                <span class="keyword">return</span> -EBUSY;</span><br><span class="line"></span><br><span class="line">        result = do_kexec_load(entry, nr_segments, segments, flags);</span><br><span class="line"></span><br><span class="line">        mutex_unlock(&amp;kexec_mutex);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>sys_kexec_load()中， 主要干活的是do_kexec_load()</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">int</span> <span class="title">do_kexec_load</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">long</span> entry, <span class="keyword">unsigned</span> <span class="keyword">long</span> nr_segments,</span></span></span><br><span class="line"><span class="function"><span class="params">                struct kexec_segment __user *segments, <span class="keyword">unsigned</span> <span class="keyword">long</span> flags)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">kimage</span> **<span class="title">dest_image</span>, *<span class="title">image</span>;</span></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> i;</span><br><span class="line">        <span class="keyword">int</span> ret;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (flags &amp; KEXEC_ON_CRASH) &#123;</span><br><span class="line">                dest_image = &amp;kexec_crash_image;</span><br><span class="line">                <span class="keyword">if</span> (kexec_crash_image)</span><br><span class="line">                        arch_kexec_unprotect_crashkres();</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                dest_image = &amp;kexec_image;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (nr_segments == <span class="number">0</span>) &#123;</span><br><span class="line">                <span class="comment">/* Uninstall image */</span></span><br><span class="line">                kimage_free(xchg(dest_image, <span class="literal">NULL</span>));</span><br><span class="line">                <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (flags &amp; KEXEC_ON_CRASH) &#123;</span><br><span class="line">                <span class="comment">/*</span></span><br><span class="line"><span class="comment">                 * Loading another kernel to switch to if this one</span></span><br><span class="line"><span class="comment">                 * crashes.  Free any current crash dump kernel before</span></span><br><span class="line"><span class="comment">                 * we corrupt it.</span></span><br><span class="line"><span class="comment">                 */</span></span><br><span class="line">                kimage_free(xchg(&amp;kexec_crash_image, <span class="literal">NULL</span>));</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        ret = kimage_alloc_init(&amp;<span class="built_in">image</span>, entry, nr_segments, segments, flags);</span><br><span class="line">        <span class="keyword">if</span> (ret)</span><br><span class="line">                <span class="keyword">return</span> ret;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (flags &amp; KEXEC_PRESERVE_CONTEXT)</span><br><span class="line">                <span class="built_in">image</span>-&gt;preserve_context = <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">        ret = machine_kexec_prepare(<span class="built_in">image</span>);</span><br><span class="line">        <span class="keyword">if</span> (ret)</span><br><span class="line">                <span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; nr_segments; i++) &#123;</span><br><span class="line">                ret = kimage_load_segment(<span class="built_in">image</span>, &amp;<span class="built_in">image</span>-&gt;segment[i]);</span><br><span class="line">                <span class="keyword">if</span> (ret)</span><br><span class="line">                        <span class="keyword">goto</span> out;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        kimage_terminate(<span class="built_in">image</span>);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Install the new kernel and uninstall the old */</span></span><br><span class="line">        <span class="built_in">image</span> = xchg(dest_image, <span class="built_in">image</span>);</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">        <span class="keyword">if</span> ((flags &amp; KEXEC_ON_CRASH) &amp;&amp; kexec_crash_image)</span><br><span class="line">                arch_kexec_protect_crashkres();</span><br><span class="line">                </span><br><span class="line">        kimage_free(<span class="built_in">image</span>);</span><br><span class="line">        <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>kexec在内核态的信息存储在<strong>kexec_crash_image</strong>, 它是<strong>struct kimage *</strong>类型。</p>
+<p> struct kimage结构体定义如下</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">kimage</span> &#123;</span></span><br><span class="line">        <span class="keyword">kimage_entry_t</span> head;</span><br><span class="line">        <span class="keyword">kimage_entry_t</span> *entry;</span><br><span class="line">        <span class="keyword">kimage_entry_t</span> *last_entry;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> start;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">page</span> *<span class="title">control_code_page</span>;</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">page</span> *<span class="title">swap_page</span>;</span></span><br><span class="line"></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> nr_segments;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">kexec_segment</span> <span class="title">segment</span>[<span class="title">KEXEC_SEGMENT_MAX</span>];</span></span><br><span class="line"></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">control_pages</span>;</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">dest_pages</span>;</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">unusable_pages</span>;</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Address of next control page to allocate for crash kernels. */</span></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> control_page;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Flags to indicate special processing */</span></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">int</span> type : <span class="number">1</span>; </span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> KEXEC_TYPE_DEFAULT 0</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> KEXEC_TYPE_CRASH   1</span></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">int</span> preserve_context : <span class="number">1</span>;</span><br><span class="line">        <span class="comment">/* If set, we are using file mode kexec syscall */</span></span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">int</span> file_mode:<span class="number">1</span>;</span><br><span class="line">                </span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> ARCH_HAS_KIMAGE_ARCH</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">kimage_arch</span> <span class="title">arch</span>;</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> CONFIG_KEXEC_FILE</span></span><br><span class="line">        <span class="comment">/* Additional fields for file based kexec syscall */</span></span><br><span class="line">        <span class="keyword">void</span> *kernel_buf;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> kernel_buf_len;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">void</span> *initrd_buf;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> initrd_buf_len;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">char</span> *cmdline_buf;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> cmdline_buf_len;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* File operations provided by image loader */</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">kexec_file_ops</span> *<span class="title">fops</span>;</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Image loader handling the kernel can store a pointer here */</span></span><br><span class="line">        <span class="keyword">void</span> *image_loader_data;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Information for loading purgatory */</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">purgatory_info</span> <span class="title">purgatory_info</span>;</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>kimage_alloc_init()会分配并初始化struct kimage结构体, 然后在kimage_load_segment()里将用户态准备好的5个segment加载到crash kernel</p>
+<p><img src="http://ww1.sinaimg.cn/large/006CVPwLly1g9dl6dca38j30qo0k00tp.jpg" alt="kexec_info_segment_02.jpg"></p>
+<p>kexec_crash_image-&gt;start的值为kexec在用户态传入的entry, 即purgatory_start</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">image</span>-&gt;start = entry</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="kexec相关节点"><a href="#kexec相关节点" class="headerlink" title="kexec相关节点"></a>kexec相关节点</h3><p><strong>/sys/kernel/kexec_loaded</strong>: 快速切换kernel是否打开</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">ssize_t</span> <span class="title">kexec_loaded_show</span><span class="params">(struct kobject *kobj,</span></span></span><br><span class="line"><span class="function"><span class="params">                                 struct kobj_attribute *attr, <span class="keyword">char</span> *buf)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">sprintf</span>(buf, <span class="string">"%d\n"</span>, !!kexec_image);</span><br><span class="line">&#125;</span><br><span class="line">KERNEL_ATTR_RO(kexec_loaded);</span><br></pre></td></tr></table></figure>
+
+
+
+<p><strong>/sys/kernel/kexec_crash_loaded</strong>: kexec crash是否打开</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">ssize_t</span> <span class="title">kexec_crash_loaded_show</span><span class="params">(struct kobject *kobj,</span></span></span><br><span class="line"><span class="function"><span class="params">                                       struct kobj_attribute *attr, <span class="keyword">char</span> *buf)</span></span></span><br><span class="line"><span class="function"></span>&#123;       </span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">sprintf</span>(buf, <span class="string">"%d\n"</span>, kexec_crash_loaded());</span><br><span class="line">&#125;</span><br><span class="line">KERNEL_ATTR_RO(kexec_crash_loaded);</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">kexec_crash_loaded</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">return</span> !!kexec_crash_image;</span><br><span class="line">&#125;</span><br><span class="line">EXPORT_SYMBOL_GPL(kexec_crash_loaded);</span><br></pre></td></tr></table></figure>
+
+
+
+<p><strong>/sys/kernel/kexec_crash_size</strong>: 返回crash kernel大小</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">ssize_t</span> <span class="title">kexec_crash_size_show</span><span class="params">(struct kobject *kobj,</span></span></span><br><span class="line"><span class="function"><span class="params">                                       struct kobj_attribute *attr, <span class="keyword">char</span> *buf)</span></span></span><br><span class="line"><span class="function"></span>&#123;       </span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">sprintf</span>(buf, <span class="string">"%zu\n"</span>, crash_get_memory_size());</span><br><span class="line">&#125;  </span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">crash_get_memory_size</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;       </span><br><span class="line">        <span class="keyword">size_t</span> <span class="built_in">size</span> = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">        mutex_lock(&amp;kexec_mutex);</span><br><span class="line">        <span class="keyword">if</span> (crashk_res.<span class="built_in">end</span> != crashk_res.start)</span><br><span class="line">                <span class="built_in">size</span> = resource_size(&amp;crashk_res);</span><br><span class="line">        mutex_unlock(&amp;kexec_mutex);</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">size</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p><strong>/sys/kernel/vmcoreinfo</strong>: 返回vmcoreinfo_note相关信息</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">ssize_t</span> <span class="title">vmcoreinfo_show</span><span class="params">(struct kobject *kobj,</span></span></span><br><span class="line"><span class="function"><span class="params">                               struct kobj_attribute *attr, <span class="keyword">char</span> *buf)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">phys_addr_t</span> vmcore_base = paddr_vmcoreinfo_note();</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">sprintf</span>(buf, <span class="string">"%pa %x\n"</span>, &amp;vmcore_base,</span><br><span class="line">                       (<span class="keyword">unsigned</span> <span class="keyword">int</span>)<span class="keyword">sizeof</span>(vmcoreinfo_note));</span><br><span class="line">&#125;       </span><br><span class="line">KERNEL_ATTR_RO(vmcoreinfo);</span><br></pre></td></tr></table></figure>
+
+
+
+<h1 id="kdump"><a href="#kdump" class="headerlink" title="kdump"></a>kdump</h1><h2 id="触发kdump"><a href="#触发kdump" class="headerlink" title="触发kdump"></a>触发kdump</h2><p>当kernel panic后， 最终会走到 __crash_kexec</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * No panic_cpu check version of crash_kexec().  This function is called</span></span><br><span class="line"><span class="comment"> * only when panic_cpu holds the current CPU number; this is the only CPU</span></span><br><span class="line"><span class="comment"> * which processes crash_kexec routines.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">void</span> __crash_kexec(struct pt_regs *regs)</span><br><span class="line">&#123;</span><br><span class="line">        <span class="comment">/* Take the kexec_mutex here to prevent sys_kexec_load</span></span><br><span class="line"><span class="comment">         * running on one cpu from replacing the crash kernel</span></span><br><span class="line"><span class="comment">         * we are using after a panic on a different cpu.</span></span><br><span class="line"><span class="comment">         *</span></span><br><span class="line"><span class="comment">         * If the crash kernel was not located in a fixed area</span></span><br><span class="line"><span class="comment">         * of memory the xchg(&amp;kexec_crash_image) would be</span></span><br><span class="line"><span class="comment">         * sufficient.  But since I reuse the memory...</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="keyword">if</span> (mutex_trylock(&amp;kexec_mutex)) &#123;</span><br><span class="line">                <span class="keyword">if</span> (kexec_crash_image) &#123;</span><br><span class="line">                        <span class="class"><span class="keyword">struct</span> <span class="title">pt_regs</span> <span class="title">fixed_regs</span>;</span></span><br><span class="line"></span><br><span class="line">                        crash_setup_regs(&amp;fixed_regs, regs);</span><br><span class="line">                        crash_save_vmcoreinfo(); </span><br><span class="line">                        machine_crash_shutdown(&amp;fixed_regs);</span><br><span class="line">                        machine_kexec(kexec_crash_image);</span><br><span class="line">                &#125;</span><br><span class="line">                mutex_unlock(&amp;kexec_mutex);</span><br><span class="line">        &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>crash_setup_regs和machine_crash_shutdown用于保存当前的register信息到vmcore</p>
+<p>crash_save_vmcoreinfo用于保存vmcore信息， 如crash time等</p>
+<p>最后会进入machine_kexec</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * machine_kexec - Do the kexec reboot.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Called from the core kexec code for a sys_reboot with LINUX_REBOOT_CMD_KEXEC.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">machine_kexec</span><span class="params">(struct kimage *kimage)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">phys_addr_t</span> reboot_code_buffer_phys;</span><br><span class="line">        <span class="keyword">void</span> *reboot_code_buffer;</span><br><span class="line">        <span class="keyword">bool</span> in_kexec_crash = (kimage == kexec_crash_image);</span><br><span class="line">        <span class="keyword">bool</span> stuck_cpus = cpus_are_stuck_in_kernel();</span><br><span class="line"></span><br><span class="line">        clear_abnormal_magic();</span><br><span class="line"></span><br><span class="line">        <span class="comment">/*</span></span><br><span class="line"><span class="comment">         * New cpus may have become stuck_in_kernel after we loaded the image.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        BUG_ON(!in_kexec_crash &amp;&amp; (stuck_cpus || (num_online_cpus() &gt; <span class="number">1</span>)));</span><br><span class="line">        WARN(in_kexec_crash &amp;&amp; (stuck_cpus || smp_crash_stop_failed()),</span><br><span class="line">                <span class="string">"Some CPUs may be stale, kdump will be unreliable.\n"</span>);</span><br><span class="line"></span><br><span class="line">        reboot_code_buffer_phys = page_to_phys(kimage-&gt;control_code_page);</span><br><span class="line">        reboot_code_buffer = phys_to_virt(reboot_code_buffer_phys);</span><br><span class="line"></span><br><span class="line">        kexec_image_info(kimage);</span><br><span class="line"></span><br><span class="line">        pr_debug(<span class="string">"%s:%d: control_code_page:        %p\n"</span>, __func__, __LINE__,</span><br><span class="line">                kimage-&gt;control_code_page);</span><br><span class="line">        pr_debug(<span class="string">"%s:%d: reboot_code_buffer_phys:  %pa\n"</span>, __func__, __LINE__,</span><br><span class="line">                &amp;reboot_code_buffer_phys);</span><br><span class="line">        pr_debug(<span class="string">"%s:%d: reboot_code_buffer:       %p\n"</span>, __func__, __LINE__,</span><br><span class="line">                reboot_code_buffer);</span><br><span class="line">        pr_debug(<span class="string">"%s:%d: relocate_new_kernel:      %p\n"</span>, __func__, __LINE__,</span><br><span class="line">                arm64_relocate_new_kernel);</span><br><span class="line">        pr_debug(<span class="string">"%s:%d: relocate_new_kernel_size: 0x%lx(%lu) bytes\n"</span>,</span><br><span class="line">                __func__, __LINE__, arm64_relocate_new_kernel_size,</span><br><span class="line">                arm64_relocate_new_kernel_size);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/*</span></span><br><span class="line"><span class="comment">         * Copy arm64_relocate_new_kernel to the reboot_code_buffer for use</span></span><br><span class="line"><span class="comment">         * after the kernel is shut down.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="built_in">memcpy</span>(reboot_code_buffer, arm64_relocate_new_kernel,</span><br><span class="line">                arm64_relocate_new_kernel_size);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Flush the reboot_code_buffer in preparation for its execution. */</span></span><br><span class="line">        __flush_dcache_area(reboot_code_buffer, arm64_relocate_new_kernel_size);</span><br><span class="line">        flush_icache_range((<span class="keyword">uintptr_t</span>)reboot_code_buffer,</span><br><span class="line">                arm64_relocate_new_kernel_size);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Flush the kimage list and its buffers. */</span></span><br><span class="line">        kexec_list_flush(kimage);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Flush the new image if already in place. */</span></span><br><span class="line">        <span class="keyword">if</span> ((kimage != kexec_crash_image) &amp;&amp; (kimage-&gt;head &amp; IND_DONE))</span><br><span class="line">                kexec_segment_flush(kimage);</span><br><span class="line"></span><br><span class="line">        pr_info(<span class="string">"Bye!\n"</span>);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Disable all DAIF exceptions. */</span></span><br><span class="line">        <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span> <span class="params">(<span class="string">"msr daifset, #0xf"</span> : : : <span class="string">"memory"</span>)</span></span>;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/*</span></span><br><span class="line"><span class="comment">         * cpu_soft_restart will shutdown the MMU, disable data caches, then</span></span><br><span class="line"><span class="comment">         * transfer control to the reboot_code_buffer which contains a copy of</span></span><br><span class="line"><span class="comment">         * the arm64_relocate_new_kernel routine.  arm64_relocate_new_kernel</span></span><br><span class="line"><span class="comment">         * uses physical addressing to relocate the new image to its final</span></span><br><span class="line"><span class="comment">         * position and transfers control to the image entry point when the</span></span><br><span class="line"><span class="comment">         * relocation is complete.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line"></span><br><span class="line">        cpu_soft_restart(kimage != kexec_crash_image,</span><br><span class="line">                reboot_code_buffer_phys, kimage-&gt;head, kimage-&gt;start, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">        BUG(); <span class="comment">/* Should never get here. */</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>machine_kexec()函数完成的主要功能</p>
+<ul>
+<li>将arm64_relocate_new_kernel拷贝到kimage的控制代码页中</li>
+<li>调用cpu_soft_restart, 传入kimage的重要参数</li>
+</ul>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">void</span> __noreturn <span class="title">cpu_soft_restart</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">long</span> el2_switch,</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">unsigned</span> <span class="keyword">long</span> entry, <span class="keyword">unsigned</span> <span class="keyword">long</span> arg0, <span class="keyword">unsigned</span> <span class="keyword">long</span> arg1,</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">unsigned</span> <span class="keyword">long</span> arg2)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        typeof(__cpu_soft_restart) *restart;</span><br><span class="line"></span><br><span class="line">        el2_switch = el2_switch &amp;&amp; !is_kernel_in_hyp_mode() &amp;&amp;</span><br><span class="line">                is_hyp_mode_available();</span><br><span class="line">        restart = (<span class="keyword">void</span> *)virt_to_phys(__cpu_soft_restart);</span><br><span class="line"></span><br><span class="line">        cpu_install_idmap();</span><br><span class="line">        restart(el2_switch, entry, arg0, arg1, arg2);</span><br><span class="line">        unreachable();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>继续调用__cpu_soft_restart, 位于arch/arm64/kernel/relocate_kernel.S</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * __cpu_soft_restart(el2_switch, entry, arg0, arg1, arg2) - Helper for</span><br><span class="line"> * cpu_soft_restart.</span><br><span class="line"> *</span><br><span class="line"> * @el2_switch: Flag to indicate a swich to EL2 is needed.</span><br><span class="line"> * @entry: Location to jump to for soft reset.</span><br><span class="line"> * arg0: First argument passed to @entry.</span><br><span class="line"> * arg1: Second argument passed to @entry.</span><br><span class="line"> * arg2: Third argument passed to @entry.</span><br><span class="line"> *</span><br><span class="line"> * Put the CPU into the same state as it would be if it had been reset, and</span><br><span class="line"> * branch to what would be the reset vector. It must be executed with the</span><br><span class="line"> * flat identity mapping.</span><br><span class="line"> *&#x2F;</span><br><span class="line">ENTRY(__cpu_soft_restart)</span><br><span class="line">        &#x2F;* Clear sctlr_el1 flags. *&#x2F;</span><br><span class="line">        mrs     x12, sctlr_el1</span><br><span class="line">        ldr     x13, &#x3D;SCTLR_ELx_FLAGS</span><br><span class="line">        bic     x12, x12, x13 </span><br><span class="line">        msr     sctlr_el1, x12 </span><br><span class="line">        isb </span><br><span class="line"></span><br><span class="line">        cbz     x0, 1f                          &#x2F;&#x2F; el2_switch?</span><br><span class="line">        mov     x0, #HVC_SOFT_RESTART</span><br><span class="line">        hvc     #0                              &#x2F;&#x2F; no return</span><br><span class="line"></span><br><span class="line">1:      mov     x18, x1                         &#x2F;&#x2F; entry</span><br><span class="line">        mov     x0, x2                          &#x2F;&#x2F; arg0</span><br><span class="line">        mov     x1, x3                          &#x2F;&#x2F; arg1</span><br><span class="line">        mov     x2, x4                          &#x2F;&#x2F; arg2</span><br><span class="line">        br      x18 </span><br><span class="line">ENDPROC(__cpu_soft_restart)</span><br></pre></td></tr></table></figure>
+
+
+
+<p>x18存储是的arm64_relocate_new_kernel,  位于arch/arm64/kernel/relocate_kernel.S</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * arm64_relocate_new_kernel - Put a 2nd stage image in place and boot it.</span><br><span class="line"> *</span><br><span class="line"> * The memory that the old kernel occupies may be overwritten when coping the</span><br><span class="line"> * new image to its final location.  To assure that the</span><br><span class="line"> * arm64_relocate_new_kernel routine which does that copy is not overwritten,</span><br><span class="line"> * all code and data needed by arm64_relocate_new_kernel must be between the</span><br><span class="line"> * symbols arm64_relocate_new_kernel and arm64_relocate_new_kernel_end.  The</span><br><span class="line"> * machine_kexec() routine will copy arm64_relocate_new_kernel to the kexec</span><br><span class="line"> * control_code_page, a special page which has been set up to be preserved</span><br><span class="line"> * during the copy operation.</span><br><span class="line"> *&#x2F;</span><br><span class="line">ENTRY(arm64_relocate_new_kernel)</span><br><span class="line"></span><br><span class="line">        &#x2F;* Setup the list loop variables. *&#x2F;</span><br><span class="line">        mov     x17, x1                         &#x2F;* x17 &#x3D; kimage_start *&#x2F;</span><br><span class="line">        mov     x16, x0                         &#x2F;* x16 &#x3D; kimage_head *&#x2F;</span><br><span class="line">        raw_dcache_line_size x15, x0            &#x2F;* x15 &#x3D; dcache line size *&#x2F;</span><br><span class="line">        mov     x14, xzr                        &#x2F;* x14 &#x3D; entry ptr *&#x2F;</span><br><span class="line">        mov     x13, xzr                        &#x2F;* x13 &#x3D; copy dest *&#x2F;</span><br><span class="line"></span><br><span class="line">        &#x2F;* Clear the sctlr_el2 flags. *&#x2F;</span><br><span class="line">        mrs     x0, CurrentEL</span><br><span class="line">        cmp     x0, #CurrentEL_EL2</span><br><span class="line">        b.ne    1f  </span><br><span class="line">        mrs     x0, sctlr_el2</span><br><span class="line">        ldr     x1, &#x3D;SCTLR_ELx_FLAGS</span><br><span class="line">        bic     x0, x0, x1</span><br><span class="line">        msr     sctlr_el2, x0</span><br><span class="line">        isb </span><br><span class="line">1:</span><br><span class="line"></span><br><span class="line">        &#x2F;* Check if the new image needs relocation. *&#x2F;</span><br><span class="line">        tbnz    x16, IND_DONE_BIT, .Ldone</span><br><span class="line"></span><br><span class="line">.Lloop:</span><br><span class="line">        and     x12, x16, PAGE_MASK             &#x2F;* x12 &#x3D; addr *&#x2F;</span><br><span class="line"></span><br><span class="line">        &#x2F;* Test the entry flags. *&#x2F;</span><br><span class="line">.Ltest_source:</span><br><span class="line">        tbz     x16, IND_SOURCE_BIT, .Ltest_indirection</span><br><span class="line"></span><br><span class="line">        &#x2F;* Invalidate dest page to PoC. *&#x2F;</span><br><span class="line">        mov     x0, x13 </span><br><span class="line">        add     x20, x0, #PAGE_SIZE</span><br><span class="line">        sub     x1, x15, #1</span><br><span class="line">        bic     x0, x0, x1</span><br><span class="line">2:      dc      ivac, x0</span><br><span class="line">        add     x0, x0, x15 </span><br><span class="line">        cmp     x0, x20 </span><br><span class="line">        b.lo    2b  </span><br><span class="line">        dsb     sy </span><br><span class="line"></span><br><span class="line">        mov x20, x13 </span><br><span class="line">        mov x21, x12</span><br><span class="line">        copy_page x20, x21, x0, x1, x2, x3, x4, x5, x6, x7</span><br><span class="line"></span><br><span class="line">        &#x2F;* dest +&#x3D; PAGE_SIZE *&#x2F;</span><br><span class="line">        add     x13, x13, PAGE_SIZE</span><br><span class="line">        b       .Lnext</span><br><span class="line"></span><br><span class="line">.Ltest_indirection:</span><br><span class="line">        tbz     x16, IND_INDIRECTION_BIT, .Ltest_destination</span><br><span class="line"></span><br><span class="line">        &#x2F;* ptr &#x3D; addr *&#x2F;</span><br><span class="line">        mov     x14, x12</span><br><span class="line">        b       .Lnext</span><br><span class="line"></span><br><span class="line">.Ltest_destination:</span><br><span class="line">        tbz     x16, IND_DESTINATION_BIT, .Lnext</span><br><span class="line"></span><br><span class="line">        &#x2F;* dest &#x3D; addr *&#x2F;</span><br><span class="line">        mov     x13, x12</span><br><span class="line"></span><br><span class="line">.Lnext:</span><br><span class="line">        &#x2F;* entry &#x3D; *ptr++ *&#x2F;</span><br><span class="line">        ldr     x16, [x14], #8</span><br><span class="line"></span><br><span class="line">        &#x2F;* while (!(entry &amp; DONE)) *&#x2F;</span><br><span class="line">        tbz     x16, IND_DONE_BIT, .Lloop</span><br><span class="line"></span><br><span class="line">.Ldone:</span><br><span class="line">        &#x2F;* wait for writes from copy_page to finish *&#x2F;</span><br><span class="line">        dsb     nsh</span><br><span class="line">        ic      iallu</span><br><span class="line">        dsb     nsh</span><br><span class="line">        isb</span><br><span class="line"></span><br><span class="line">        &#x2F;* Start new image. *&#x2F;</span><br><span class="line">        mov     x0, xzr</span><br><span class="line">        mov     x1, xzr</span><br><span class="line">        mov     x2, xzr</span><br><span class="line">        mov     x3, xzr</span><br><span class="line">        br      x17</span><br><span class="line"></span><br><span class="line">ENDPROC(arm64_relocate_new_kernel)</span><br></pre></td></tr></table></figure>
+
+
+
+<p>最后， 会跳转到kimage-&gt;start, 也就是kexec用户态的info.entry, 即purgatory_start</p>
+<p>purgatory_start位于kexec-tools仓库的purgatory/arch/arm64/entry.S</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * ARM64 purgatory.</span><br><span class="line"> *&#x2F;</span><br><span class="line"></span><br><span class="line">.macro  size, sym:req</span><br><span class="line">        .size \sym, . - \sym</span><br><span class="line">.endm</span><br><span class="line"></span><br><span class="line">.text</span><br><span class="line"></span><br><span class="line">.globl purgatory_start</span><br><span class="line">purgatory_start:</span><br><span class="line"></span><br><span class="line">        adr     x19, .Lstack</span><br><span class="line">        mov     sp, x19 </span><br><span class="line"></span><br><span class="line">        bl      purgatory</span><br><span class="line"></span><br><span class="line">        &#x2F;* Start new image. *&#x2F;</span><br><span class="line">        ldr     x17, arm64_kernel_entry</span><br><span class="line">        ldr     x0, arm64_dtb_addr</span><br><span class="line">        mov     x1, xzr </span><br><span class="line">        mov     x2, xzr </span><br><span class="line">        mov     x3, xzr </span><br><span class="line">        br      x17 </span><br><span class="line"></span><br><span class="line">size purgatory_start</span><br><span class="line"></span><br><span class="line">.ltorg</span><br><span class="line"></span><br><span class="line">.align 4</span><br><span class="line">        .rept   256 </span><br><span class="line">        .quad   0   </span><br><span class="line">        .endr</span><br><span class="line">.Lstack:</span><br><span class="line"></span><br><span class="line">.data</span><br><span class="line"></span><br><span class="line">.align 3</span><br><span class="line"></span><br><span class="line">.globl arm64_kernel_entry</span><br><span class="line">arm64_kernel_entry:</span><br><span class="line">        .quad   0   </span><br><span class="line">size arm64_kernel_entry</span><br><span class="line"></span><br><span class="line">.globl arm64_dtb_addr</span><br><span class="line">arm64_dtb_addr:</span><br><span class="line">        .quad   0   </span><br><span class="line">size arm64_dtb_addr</span><br><span class="line"></span><br><span class="line">.end</span><br></pre></td></tr></table></figure>
+
+
+
+<p>purgatory_start主要完成两个功能</p>
+<ul>
+<li>执行函数purgatory, 完成指定sha256_region的校验</li>
+<li>跳转到capture kernel entry, 启动新的kernel</li>
+</ul>
+<h2 id="dump-vmcore"><a href="#dump-vmcore" class="headerlink" title="dump vmcore"></a>dump vmcore</h2><h3 id="elfcorehdr"><a href="#elfcorehdr" class="headerlink" title="elfcorehdr"></a>elfcorehdr</h3><p>kernel每次启动时， 都会去检查elfcorehdr是否存在。elfcorehdr主要是为ELF core header预留内存</p>
+<p>kernel相关的实现在reserve_elfcorehdr()</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">void</span> __init <span class="title">reserve_elfcorehdr</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        of_scan_flat_dt(early_init_dt_scan_elfcorehdr, <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (!elfcorehdr_size)</span><br><span class="line">                <span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (memblock_is_region_reserved(elfcorehdr_addr, elfcorehdr_size)) &#123;</span><br><span class="line">                pr_warn(<span class="string">"elfcorehdr is overlapped\n"</span>);</span><br><span class="line">                <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        memblock_reserve(elfcorehdr_addr, elfcorehdr_size);</span><br><span class="line"></span><br><span class="line">        pr_info(<span class="string">"Reserving %lldKB of memory at 0x%llx for elfcorehdr\n"</span>,</span><br><span class="line">                elfcorehdr_size &gt;&gt; <span class="number">10</span>, elfcorehdr_addr);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>其中， early_init_dt_scan_elfcorehdr()是要查找<strong>“linux,elfcorehdr”</strong>的属性. 这个属性是在执行kexec后，设置到capture kernel使用的dtb中。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">int</span> __init <span class="title">early_init_dt_scan_elfcorehdr</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">long</span> node,</span></span></span><br><span class="line"><span class="function"><span class="params">                <span class="keyword">const</span> <span class="keyword">char</span> *uname, <span class="keyword">int</span> depth, <span class="keyword">void</span> *data)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">const</span> __be32 *reg;</span><br><span class="line">        <span class="keyword">int</span> len;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (depth != <span class="number">1</span> || <span class="built_in">strcmp</span>(uname, <span class="string">"chosen"</span>) != <span class="number">0</span>)</span><br><span class="line">                <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">        reg = of_get_flat_dt_prop(node, <span class="string">"linux,elfcorehdr"</span>, &amp;len);</span><br><span class="line">        <span class="keyword">if</span> (!reg || (len &lt; (dt_root_addr_cells + dt_root_size_cells)))</span><br><span class="line">                <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">        elfcorehdr_addr = dt_mem_next_cell(dt_root_addr_cells, &amp;reg);</span><br><span class="line">        elfcorehdr_size = dt_mem_next_cell(dt_root_size_cells, &amp;reg);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>ELF core header信息会存储到<strong>elfcorehdr_addr</strong>/<strong>elfcorehdr_size</strong></p>
+<h3 id="vmcore-init"><a href="#vmcore-init" class="headerlink" title="vmcore_init"></a>vmcore_init</h3><p>vmcore_init实现如下</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Init function for vmcore module. */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">int</span> __init <span class="title">vmcore_init</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">int</span> rc = <span class="number">0</span>; </span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Allow architectures to allocate ELF header in 2nd kernel */</span></span><br><span class="line">        rc = elfcorehdr_alloc(&amp;elfcorehdr_addr, &amp;elfcorehdr_size);</span><br><span class="line">        <span class="keyword">if</span> (rc) </span><br><span class="line">                <span class="keyword">return</span> rc;</span><br><span class="line">        <span class="comment">/*</span></span><br><span class="line"><span class="comment">         * If elfcorehdr= has been passed in cmdline or created in 2nd kernel,</span></span><br><span class="line"><span class="comment">         * then capture the dump.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="keyword">if</span> (!(is_vmcore_usable()))</span><br><span class="line">                <span class="keyword">return</span> rc;</span><br><span class="line">        rc = parse_crash_elf_headers();</span><br><span class="line">        <span class="keyword">if</span> (rc) &#123;</span><br><span class="line">                pr_warn(<span class="string">"Kdump: vmcore not initialized\n"</span>);</span><br><span class="line">                <span class="keyword">return</span> rc;</span><br><span class="line">        &#125;</span><br><span class="line">        elfcorehdr_free(elfcorehdr_addr);</span><br><span class="line">        elfcorehdr_addr = ELFCORE_ADDR_ERR;</span><br><span class="line"></span><br><span class="line">        proc_vmcore = proc_create(<span class="string">"vmcore"</span>, S_IRUSR, <span class="literal">NULL</span>, &amp;proc_vmcore_operations);</span><br><span class="line">        <span class="keyword">if</span> (proc_vmcore)</span><br><span class="line">                proc_vmcore-&gt;<span class="built_in">size</span> = vmcore_size;</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line">fs_initcall(vmcore_init);</span><br></pre></td></tr></table></figure>
+
+
+
+<p>vmcore_init主要实现了以下功能</p>
+<ul>
+<li><p>is_vmcore_usable() 检查ELF core header是否存在，来决定vmcore是否可用</p>
+</li>
+<li><p>parse_crash_elf_headers()用于解析ELF core header</p>
+</li>
+<li><p>proc_create用于创建/proc/vmcore结点</p>
+</li>
+</ul>
+<h4 id="is-vmcore-usable"><a href="#is-vmcore-usable" class="headerlink" title="is_vmcore_usable"></a>is_vmcore_usable</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * is_kdump_kernel() checks whether this kernel is booting after a panic of</span></span><br><span class="line"><span class="comment"> * previous kernel or not. This is determined by checking if previous kernel</span></span><br><span class="line"><span class="comment"> * has passed the elf core header address on command line.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * This is not just a test if CONFIG_CRASH_DUMP is enabled or not. It will</span></span><br><span class="line"><span class="comment"> * return 1 if CONFIG_CRASH_DUMP=y and if kernel is booting after a panic of</span></span><br><span class="line"><span class="comment"> * previous kernel.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">int</span> <span class="title">is_kdump_kernel</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">return</span> (elfcorehdr_addr != ELFCORE_ADDR_MAX) ? <span class="number">1</span> : <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* is_vmcore_usable() checks if the kernel is booting after a panic and</span></span><br><span class="line"><span class="comment"> * the vmcore region is usable.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * This makes use of the fact that due to alignment -2ULL is not</span></span><br><span class="line"><span class="comment"> * a valid pointer, much in the vain of IS_ERR(), except</span></span><br><span class="line"><span class="comment"> * dealing directly with an unsigned long long rather than a pointer.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">int</span> <span class="title">is_vmcore_usable</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">return</span> is_kdump_kernel() &amp;&amp; elfcorehdr_addr != ELFCORE_ADDR_ERR ? <span class="number">1</span> : <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h4 id="parse-crash-elf-headers"><a href="#parse-crash-elf-headers" class="headerlink" title="parse_crash_elf_headers"></a>parse_crash_elf_headers</h4><ul>
+<li>将PT_NOTE的program header合并成一个，数据存放到<strong>elfnotes_buf</strong></li>
+<li>将PT_LOAD的promgram header信息存放到<strong>vmcore_list</strong></li>
+</ul>
+<p>vmcore_list是个双向链表， 每个结点是struct vmcore，定义如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">struct vmcore &#123;</span><br><span class="line">        struct list_head list;</span><br><span class="line">        unsigned long long paddr;</span><br><span class="line">        unsigned long long size;</span><br><span class="line">        loff_t offset;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>vmcore header结构如下</p>
+<p><img src="http://ww1.sinaimg.cn/large/006CVPwLly1g9eqc3m581j30qo0k00t5.jpg" alt="vmcore_01.jpg"></p>
+<h4 id="proc-create"><a href="#proc-create" class="headerlink" title="proc_create"></a>proc_create</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> struct proc_dir_entry *<span class="title">proc_create</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">const</span> <span class="keyword">char</span> *name, <span class="keyword">umode_t</span> mode, struct proc_dir_entry *parent,</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">const</span> struct file_operations *proc_fops)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">return</span> proc_create_data(name, mode, parent, proc_fops, <span class="literal">NULL</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function">struct proc_dir_entry *<span class="title">proc_create_data</span><span class="params">(<span class="keyword">const</span> <span class="keyword">char</span> *name, <span class="keyword">umode_t</span> mode,</span></span></span><br><span class="line"><span class="function"><span class="params">                                        struct proc_dir_entry *parent,</span></span></span><br><span class="line"><span class="function"><span class="params">                                        <span class="keyword">const</span> struct file_operations *proc_fops,</span></span></span><br><span class="line"><span class="function"><span class="params">                                        <span class="keyword">void</span> *data)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">proc_dir_entry</span> *<span class="title">pde</span>;</span></span><br><span class="line">        <span class="keyword">if</span> ((mode &amp; S_IFMT) == <span class="number">0</span>)</span><br><span class="line">                mode |= S_IFREG;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (!S_ISREG(mode)) &#123;</span><br><span class="line">                WARN_ON(<span class="number">1</span>);     <span class="comment">/* use proc_mkdir() */</span></span><br><span class="line">                <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        BUG_ON(proc_fops == <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> ((mode &amp; S_IALLUGO) == <span class="number">0</span>)</span><br><span class="line">                mode |= S_IRUGO;</span><br><span class="line">        pde = __proc_create(&amp;parent, name, mode, <span class="number">1</span>);</span><br><span class="line">        <span class="keyword">if</span> (!pde)</span><br><span class="line">                <span class="keyword">goto</span> out;</span><br><span class="line">        pde-&gt;proc_fops = proc_fops;</span><br><span class="line">        pde-&gt;data = data;</span><br><span class="line">        pde-&gt;proc_iops = &amp;proc_file_inode_operations;</span><br><span class="line">        <span class="keyword">if</span> (proc_register(parent, pde) &lt; <span class="number">0</span>)</span><br><span class="line">                <span class="keyword">goto</span> out_free;</span><br><span class="line">        <span class="keyword">return</span> pde;</span><br><span class="line">out_free:</span><br><span class="line">        kfree(pde);</span><br><span class="line">out:</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>/proc/vmcore结点被创建后， </p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_operations</span> <span class="title">proc_vmcore_operations</span> = &#123;</span></span><br><span class="line">        .<span class="built_in">read</span>           = read_vmcore,</span><br><span class="line">        .llseek         = default_llseek,</span><br><span class="line">        .mmap           = mmap_vmcore,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>当读取该结点时， 会调用到read_vmcore()-&gt;__read_vmcore()</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Read from the ELF header and then the crash dump. On error, negative value is</span></span><br><span class="line"><span class="comment"> * returned otherwise number of bytes read are returned.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">ssize_t</span> __read_vmcore(<span class="keyword">char</span> *<span class="built_in">buffer</span>, <span class="keyword">size_t</span> buflen, <span class="keyword">loff_t</span> *fpos,</span><br><span class="line">                             <span class="keyword">int</span> userbuf)</span><br><span class="line">&#123;</span><br><span class="line">        <span class="keyword">ssize_t</span> acc = <span class="number">0</span>, tmp;</span><br><span class="line">        <span class="keyword">size_t</span> tsz;</span><br><span class="line">        u64 start;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">vmcore</span> *<span class="title">m</span> = <span class="title">NULL</span>;</span></span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (buflen == <span class="number">0</span> || *fpos &gt;= vmcore_size)</span><br><span class="line">                <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* trim buflen to not go beyond EOF */</span></span><br><span class="line">        <span class="keyword">if</span> (buflen &gt; vmcore_size - *fpos)</span><br><span class="line">                buflen = vmcore_size - *fpos;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Read ELF core header */</span></span><br><span class="line">        <span class="keyword">if</span> (*fpos &lt; elfcorebuf_sz) &#123;</span><br><span class="line">                tsz = <span class="built_in">min</span>(elfcorebuf_sz - (<span class="keyword">size_t</span>)*fpos, buflen);</span><br><span class="line">                <span class="keyword">if</span> (copy_to(<span class="built_in">buffer</span>, elfcorebuf + *fpos, tsz, userbuf))</span><br><span class="line">                        <span class="keyword">return</span> -EFAULT;</span><br><span class="line">                buflen -= tsz;</span><br><span class="line">                *fpos += tsz;</span><br><span class="line">                <span class="built_in">buffer</span> += tsz;</span><br><span class="line">                acc += tsz;</span><br><span class="line"></span><br><span class="line">                <span class="comment">/* leave now if filled buffer already */</span></span><br><span class="line">                <span class="keyword">if</span> (buflen == <span class="number">0</span>)</span><br><span class="line">                        <span class="keyword">return</span> acc;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Read Elf note segment */</span></span><br><span class="line">        <span class="keyword">if</span> (*fpos &lt; elfcorebuf_sz + elfnotes_sz) &#123;</span><br><span class="line">                <span class="keyword">void</span> *kaddr;</span><br><span class="line"></span><br><span class="line">                tsz = <span class="built_in">min</span>(elfcorebuf_sz + elfnotes_sz - (<span class="keyword">size_t</span>)*fpos, buflen);</span><br><span class="line">                kaddr = elfnotes_buf + *fpos - elfcorebuf_sz;</span><br><span class="line">                <span class="keyword">if</span> (copy_to(<span class="built_in">buffer</span>, kaddr, tsz, userbuf))</span><br><span class="line">                        <span class="keyword">return</span> -EFAULT;</span><br><span class="line">                buflen -= tsz;</span><br><span class="line">                *fpos += tsz;</span><br><span class="line">                <span class="built_in">buffer</span> += tsz;</span><br><span class="line">                acc += tsz;</span><br><span class="line"></span><br><span class="line">                <span class="comment">/* leave now if filled buffer already */</span></span><br><span class="line">                <span class="keyword">if</span> (buflen == <span class="number">0</span>)</span><br><span class="line">                        <span class="keyword">return</span> acc;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        list_for_each_entry(m, &amp;vmcore_list, <span class="built_in">list</span>) &#123;</span><br><span class="line">                <span class="keyword">if</span> (*fpos &lt; m-&gt;offset + m-&gt;<span class="built_in">size</span>) &#123;</span><br><span class="line">                        tsz = (<span class="keyword">size_t</span>)<span class="keyword">min_t</span>(<span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="keyword">long</span>,</span><br><span class="line">                                            m-&gt;offset + m-&gt;<span class="built_in">size</span> - *fpos,</span><br><span class="line">                                            buflen);</span><br><span class="line">                        start = m-&gt;paddr + *fpos - m-&gt;offset;</span><br><span class="line">                        tmp = read_from_oldmem(<span class="built_in">buffer</span>, tsz, &amp;start, userbuf);</span><br><span class="line">                        <span class="keyword">if</span> (tmp &lt; <span class="number">0</span>)</span><br><span class="line">                                <span class="keyword">return</span> tmp;</span><br><span class="line">                        buflen -= tsz;</span><br><span class="line">                        *fpos += tsz;</span><br><span class="line">                        <span class="built_in">buffer</span> += tsz;</span><br><span class="line">                        acc += tsz;</span><br><span class="line"></span><br><span class="line">                        <span class="comment">/* leave now if filled buffer already */</span></span><br><span class="line">                        <span class="keyword">if</span> (buflen == <span class="number">0</span>)</span><br><span class="line">                                <span class="keyword">return</span> acc;</span><br><span class="line">                &#125;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> acc;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>该函数会依次读取ELF header, elfnotes_buf和vmcore_list, 从而生成完整的vmcore文件。</p>
+<p><img src="http://ww1.sinaimg.cn/large/006CVPwLly1g9eqcpu0r1j30qo0k0my3.jpg" alt="vmcore_02.jpg"></p>
+<h3 id="导出vmcore"><a href="#导出vmcore" class="headerlink" title="导出vmcore"></a>导出vmcore</h3><p>新的kernel启动后， 我们可以直接导出/proc/vmcore,  如在挂载文件系统后， 将/proc/vmcore压缩到本地硬盘。</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> tar -czf /mnt/vmcore.tar.gz /proc/vmcore</span></span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<h2 id="分析vmcore"><a href="#分析vmcore" class="headerlink" title="分析vmcore"></a>分析vmcore</h2><p>/proc/vmcore导出后， 通常借助crash工具进行离线分析。</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> crash vmlinux proc/vmcore </span></span><br><span class="line"></span><br><span class="line">crash 7.2.5</span><br><span class="line">Copyright (C) 2002-2019  Red Hat, Inc.</span><br><span class="line">Copyright (C) 2004, 2005, 2006, 2010  IBM Corporation</span><br><span class="line">Copyright (C) 1999-2006  Hewlett-Packard Co</span><br><span class="line">Copyright (C) 2005, 2006, 2011, 2012  Fujitsu Limited</span><br><span class="line">Copyright (C) 2006, 2007  VA Linux Systems Japan K.K.</span><br><span class="line">Copyright (C) 2005, 2011  NEC Corporation</span><br><span class="line">Copyright (C) 1999, 2002, 2007  Silicon Graphics, Inc.</span><br><span class="line">Copyright (C) 1999, 2000, 2001, 2002  Mission Critical Linux, Inc.</span><br><span class="line">This program is free software, covered by the GNU General Public License,</span><br><span class="line">and you are welcome to change it and/or distribute copies of it under</span><br><span class="line">certain conditions.  Enter "help copying" to see the conditions.</span><br><span class="line">This program has absolutely no warranty.  Enter "help warranty" for details.</span><br><span class="line"> </span><br><span class="line">GNU gdb (GDB) 7.6</span><br><span class="line">Copyright (C) 2013 Free Software Foundation, Inc.</span><br><span class="line">License GPLv3+: GNU GPL version 3 or later &lt;http://gnu.org/licenses/gpl.html&gt;</span><br><span class="line">This is free software: you are free to change and redistribute it.</span><br><span class="line">There is NO WARRANTY, to the extent permitted by law.  Type "show copying"</span><br><span class="line">and "show warranty" for details.</span><br><span class="line">This GDB was configured as "--host=x86_64-unknown-linux-gnu --target=aarch64-elf-linux"...</span><br><span class="line">Redefine command "pstring"? (y or n) [answered Y; input not from terminal]</span><br><span class="line"></span><br><span class="line">      KERNEL: vmlinux                           </span><br><span class="line">    DUMPFILE: proc/vmcore</span><br><span class="line">        CPUS: 8</span><br><span class="line">        DATE: Mon Oct 28 21:44:54 2019</span><br><span class="line">      UPTIME: 00:29:23</span><br><span class="line">LOAD AVERAGE: 0.00, 0.00, 0.00</span><br><span class="line">       TASKS: 176</span><br><span class="line">    NODENAME: chiptim</span><br><span class="line">     RELEASE: 4.9.38-chip_v1.0.0-00253-gece0e28-dirty</span><br><span class="line">     VERSION: #1 SMP Thu Aug 22 21:27:26 HKT 2019</span><br><span class="line">     MACHINE: aarch64  (unknown Mhz)</span><br><span class="line">      MEMORY: 15.8 GB</span><br><span class="line">       PANIC: "sysrq: SysRq : Trigger a crash"</span><br><span class="line">         PID: 978</span><br><span class="line">     COMMAND: "bash"</span><br><span class="line">        TASK: ffffffc2ea91bc00  [THREAD_INFO: ffffffc2ea91bc00]</span><br><span class="line">         CPU: 0</span><br><span class="line">       STATE: TASK_RUNNING (SYSRQ)</span><br><span class="line"></span><br><span class="line"><span class="meta">crash&gt;</span><span class="bash"> bt</span></span><br><span class="line">PID: 978    TASK: ffffffc2ea91bc00  CPU: 0   COMMAND: "bash"</span><br><span class="line"><span class="meta"> #</span><span class="bash">0 [ffffffc2e5253880] machine_kexec at ffffff80080940e0</span></span><br><span class="line"><span class="meta"> #</span><span class="bash">1 [ffffffc2e52538e0] __crash_kexec at ffffff800811d430</span></span><br><span class="line"><span class="meta"> #</span><span class="bash">2 [ffffffc2e5253a30] __crash_kexec at ffffff800811d4e8</span></span><br><span class="line"><span class="meta"> #</span><span class="bash">3 [ffffffc2e5253a50] crash_kexec at ffffff800811d558</span></span><br><span class="line"><span class="meta"> #</span><span class="bash">4 [ffffffc2e5253a70] die at ffffff8008088db4</span></span><br><span class="line"><span class="meta"> #</span><span class="bash">5 [ffffffc2e5253ab0] __do_kernel_fault at ffffff8008099c64</span></span><br><span class="line"><span class="meta"> #</span><span class="bash">6 [ffffffc2e5253ae0] do_page_fault at ffffff8008097560</span></span><br><span class="line"><span class="meta"> #</span><span class="bash">7 [ffffffc2e5253b50] do_translation_fault at ffffff8008097668</span></span><br><span class="line"><span class="meta"> #</span><span class="bash">8 [ffffffc2e5253b60] do_mem_abort at ffffff8008081294</span></span><br><span class="line"><span class="meta"> #</span><span class="bash">9 [ffffffc2e5253d40] el1_ia at ffffff800808260c</span></span><br><span class="line">     PC: ffffff80084915ac  [sysrq_handle_crash+20]</span><br><span class="line">     LR: ffffff800849202c  [__handle_sysrq+284]</span><br><span class="line">     SP: ffffffc2e5253d40  PSTATE: 00000145</span><br><span class="line">    X29: ffffffc2e5253d40  X28: ffffffc2ea91bc00  X27: ffffff8008852000</span><br><span class="line">    X26: 0000000000000040  X25: 0000000000000123  X24: 0000000000000015</span><br><span class="line">    X23: 0000000000000000  X22: 0000000000000007  X21: ffffff8008bb0da8</span><br><span class="line">    X20: 0000000000000063  X19: ffffff8008b6c000  X18: 0000000000000000</span><br><span class="line">    X17: 0000007f9d45b120  X16: ffffff80081d5700  X15: ffffffffffffffff</span><br><span class="line">    X14: 0000000000000000  X13: 0000000000000007  X12: 0000000000000161</span><br><span class="line">    X11: 0000000000000006  X10: 0000000000000161   X9: 0000000000000001</span><br><span class="line">     X8: ffffff800839a988   X7: 0000000000000008   X6: ffffff8008db3c08</span><br><span class="line">     X5: 0000000000000000   X4: 0000000000000000   X3: 0000000000000000</span><br><span class="line">     X2: ffffffc2ffb0e700   X1: 0000000000000000   X0: 0000000000000001</span><br><span class="line"><span class="meta">#</span><span class="bash">10 [ffffffc2e5253d80] write_sysrq_trigger at ffffff8008492494</span></span><br><span class="line"><span class="meta">#</span><span class="bash">11 [ffffffc2e5253da0] proc_reg_write at ffffff8008234090</span></span><br><span class="line"><span class="meta">#</span><span class="bash">12 [ffffffc2e5253dc0] __vfs_write at ffffff80081d3758</span></span><br><span class="line"><span class="meta">#</span><span class="bash">13 [ffffffc2e5253e40] vfs_write at ffffff80081d4518</span></span><br><span class="line"><span class="meta">#</span><span class="bash">14 [ffffffc2e5253e80] sys_write at ffffff80081d5740</span></span><br><span class="line"><span class="meta">#</span><span class="bash">15 [ffffffc2e5253ec0] el0_svc_naked at ffffff8008082f2c</span></span><br><span class="line">     PC: 0000007f9d4af078   LR: 0000007f9d45e2f8   SP: 0000007fdabec300</span><br><span class="line">    X29: 0000007fdabec300  X28: 0000007fdabec484  X27: 0000000000000000</span><br><span class="line">    X26: 0000000000000000  X25: 0000000000000000  X24: 0000000000000002</span><br><span class="line">    X23: 0000007f9d534638  X22: 0000000000000002  X21: 0000007f9d538480</span><br><span class="line">    X20: 0000000000516808  X19: 0000000000000002  X18: 0000000000000000</span><br><span class="line">    X17: 0000007f9d45b120  X16: 0000000000000000  X15: 0000000000000000</span><br><span class="line">    X14: 0000000000000000  X13: 0000000000000000  X12: 0000000000000000</span><br><span class="line">    X11: 0000000000000020  X10: 0000000000000000   X9: 0000000000000000</span><br><span class="line">     X8: 0000000000000040   X7: 0000000000000001   X6: 0000000000000063</span><br><span class="line">     X5: 5551000454000000   X4: 0000000000000888   X3: 0000000000000000</span><br><span class="line">     X2: 0000000000000002   X1: 0000000000516808   X0: 0000000000000001</span><br><span class="line">    ORIG_X0: 0000000000000001  SYSCALLNO: 40  PSTATE: 20000000</span><br></pre></td></tr></table></figure>
+
+<p>​          </p>
+<hr>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg" alt="programmer8.jpg"></p>
+<center>
+程序员自我修养(ID: dumphex)
+</center>
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div>坚持技术原创，感谢您的支持！</div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpg" alt="dumphex 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpg" alt="dumphex 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>dumphex
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://dumphex.github.io/2020/02/15/kdump/" title="深入学习kdump原理">https://dumphex.github.io/2020/02/15/kdump/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fa fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/kernel/" rel="tag"># kernel</a>
+              <a href="/tags/kdump/" rel="tag"># kdump</a>
+              <a href="/tags/crash/" rel="tag"># crash</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/02/14/hello-world/" rel="prev" title="Hello World">
+      <i class="fa fa-chevron-left"></i> Hello World
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let activeClass = CONFIG.comments.activeClass;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#Overview"><span class="nav-number">1.</span> <span class="nav-text">Overview</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#什么是kdump"><span class="nav-number">1.1.</span> <span class="nav-text">什么是kdump</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#kernel的分类"><span class="nav-number">1.2.</span> <span class="nav-text">kernel的分类</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#kdump流程"><span class="nav-number">1.3.</span> <span class="nav-text">kdump流程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#版本信息"><span class="nav-number">1.4.</span> <span class="nav-text">版本信息</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#kexec"><span class="nav-number">2.</span> <span class="nav-text">kexec</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#kexec-overview"><span class="nav-number">2.1.</span> <span class="nav-text">kexec overview</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#kexec功能"><span class="nav-number">2.1.1.</span> <span class="nav-text">kexec功能</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#代码下载-编译"><span class="nav-number">2.1.2.</span> <span class="nav-text">代码下载&#x2F;编译</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#kexec运行"><span class="nav-number">2.1.3.</span> <span class="nav-text">kexec运行</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#kexec用户态"><span class="nav-number">2.2.</span> <span class="nav-text">kexec用户态</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#配置解析"><span class="nav-number">2.2.1.</span> <span class="nav-text">配置解析</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#收集segment"><span class="nav-number">2.2.2.</span> <span class="nav-text">收集segment</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#kernel-segment"><span class="nav-number">2.2.2.1.</span> <span class="nav-text">kernel segment</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#ELF-core-header-segment"><span class="nav-number">2.2.2.2.</span> <span class="nav-text">ELF core header segment</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#initrd-segment"><span class="nav-number">2.2.2.3.</span> <span class="nav-text">initrd segment</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#dtb-segment"><span class="nav-number">2.2.2.4.</span> <span class="nav-text">dtb segment</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#purgatory-segment"><span class="nav-number">2.2.2.5.</span> <span class="nav-text">purgatory segment</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#小结"><span class="nav-number">2.2.2.6.</span> <span class="nav-text">小结</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#更新哈希值"><span class="nav-number">2.2.3.</span> <span class="nav-text">更新哈希值</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#开始加载"><span class="nav-number">2.2.4.</span> <span class="nav-text">开始加载</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#kexec内核态"><span class="nav-number">2.3.</span> <span class="nav-text">kexec内核态</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#crashkernel"><span class="nav-number">2.3.1.</span> <span class="nav-text">crashkernel</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#sys-kexec-load"><span class="nav-number">2.3.2.</span> <span class="nav-text">sys_kexec_load</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#kexec相关节点"><span class="nav-number">2.3.3.</span> <span class="nav-text">kexec相关节点</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#kdump"><span class="nav-number">3.</span> <span class="nav-text">kdump</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#触发kdump"><span class="nav-number">3.1.</span> <span class="nav-text">触发kdump</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#dump-vmcore"><span class="nav-number">3.2.</span> <span class="nav-text">dump vmcore</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#elfcorehdr"><span class="nav-number">3.2.1.</span> <span class="nav-text">elfcorehdr</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#vmcore-init"><span class="nav-number">3.2.2.</span> <span class="nav-text">vmcore_init</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#is-vmcore-usable"><span class="nav-number">3.2.2.1.</span> <span class="nav-text">is_vmcore_usable</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#parse-crash-elf-headers"><span class="nav-number">3.2.2.2.</span> <span class="nav-text">parse_crash_elf_headers</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#proc-create"><span class="nav-number">3.2.2.3.</span> <span class="nav-text">proc_create</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#导出vmcore"><span class="nav-number">3.2.3.</span> <span class="nav-text">导出vmcore</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#分析vmcore"><span class="nav-number">3.3.</span> <span class="nav-text">分析vmcore</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="dumphex"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">dumphex</p>
+  <div class="site-description" itemprop="description">专注于Linux/Android/C/C++等</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">2</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/dumphex" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;dumphex" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/3151a9dcd169" title="简书 → https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;3151a9dcd169" rel="noopener" target="_blank"><i class="fa fa-fw fa-book"></i>简书</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/images/programmer_qrcode.jpg" title="Wechat → images&#x2F;programmer_qrcode.jpg"><i class="fa fa-fw fa-wechat"></i>Wechat</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/dumphex@163.com" title="E-Mail → dumphex@163.com"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">dumphex</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  </div>
+  <span class="post-meta-divider">|</span>
+  <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.7.1
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

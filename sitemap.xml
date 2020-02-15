@@ -2,14 +2,21 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
-    <loc>https://dumphex.github.io/2020/02/14/hello-world/</loc>
+    <loc>https://dumphex.github.io/2020/02/15/kdump/</loc>
     
-    <lastmod>2020-02-14T13:08:27.601Z</lastmod>
+    <lastmod>2020-02-15T10:12:56.802Z</lastmod>
     
   </url>
   
   <url>
     <loc>https://dumphex.github.io/about/index.html</loc>
+    
+    <lastmod>2020-02-15T09:57:39.591Z</lastmod>
+    
+  </url>
+  
+  <url>
+    <loc>https://dumphex.github.io/2020/02/14/hello-world/</loc>
     
     <lastmod>2020-02-14T13:08:27.601Z</lastmod>
     
