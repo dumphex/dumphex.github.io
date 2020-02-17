@@ -6,20 +6,18 @@ tags:
 - kernel
 - kdump
 - crash
-categories: kernel
+categories: Linux
 ---
 
 本文将深入学习kdump相关代码，梳理kdump整个流程。
 
 <!-- more -->
 
-
-
-# Overview
+# 1. Overview
 
 
 
-## 什么是kdump
+## 1.1 什么是kdump
 
 - kernel崩溃时， 创建核心存储(core dump)
 
@@ -27,7 +25,7 @@ categories: kernel
 
   
 
-## kernel的分类
+## 1.2 kernel的分类
 
 - first kernel(production kernel)
 
@@ -35,7 +33,7 @@ categories: kernel
 
   
 
-## kdump流程
+## 1.3 kdump流程
 
 ![kdump_sub.png](http://ww1.sinaimg.cn/large/006CVPwLly1g9ac5zupkdj30qp0hbac4.jpg)
 
@@ -45,7 +43,7 @@ categories: kernel
 
 
 
-## 版本信息
+## 1.4 版本信息
 
 - kernel版本是4.9.38
 - kexec-tools版本是v2.0.16
@@ -53,11 +51,11 @@ categories: kernel
 
 
 
-# kexec
+# 2. kexec
 
-## kexec overview
+## 2.1 kexec overview
 
-### kexec功能
+### 2.1.1 kexec功能
 
 kexec主要有两个功能
 
@@ -67,7 +65,7 @@ kexec主要有两个功能
 
   
 
-### 代码下载/编译
+### 2.1.2 代码下载/编译
 
 kexec可通过github下载
 
@@ -89,7 +87,7 @@ $ make install
 
 
 
-### kexec运行
+### 2.1.3 kexec运行
 
 - 快速切换kernel
 
@@ -111,9 +109,9 @@ $ sudo ./kexec -p ./Image --initrd=./kdump.cpio --dtb=./chip_asic.dtb --append="
 
 
 
-## kexec用户态
+## 2.2 kexec用户态
 
-### 配置解析
+### 2.2.1 配置解析
 
 判断是否加载crashkernel， 相关函数实现在**is_crashkernel_mem_reserved**()
 
@@ -139,7 +137,7 @@ $ sudo ./kexec -p ./Image --initrd=./kdump.cpio --dtb=./chip_asic.dtb --append="
 
 ![memory.jpg](http://ww1.sinaimg.cn/large/006CVPwLly1g9cx07tykjj30qo0k0754.jpg)
 
-### 收集segment
+### 2.2.2 收集segment
 
 kexec用户态的信息， 存储在**struct kexec_info**里面。 
 
@@ -272,7 +270,7 @@ $ aarch64-linux-gnu-readelf -s purgatory.ro.sym |grep -e purgatory_start -e arm6
 
 ![kexec_info_segment_01.jpg](http://ww1.sinaimg.cn/large/006CVPwLly1g9bq9vje9wj30qo0k0q3t.jpg)
 
-### 更新哈希值
+### 2.2.3 更新哈希值
 
 调用update_purgatory()， 计算除了purgatory之外其它4个segment的sha256值, 并存储到**sha256_digest**符号
 
@@ -284,7 +282,7 @@ $ aarch64-linux-gnu-readelf -s purgatory.ro.sym |grep -e " sha256_regions" -e " 
 
 
 
-### 开始加载
+### 2.2.4 开始加载
 
 kexex通过kexec_load函数中的系统调用来完成最后的加载。
 
@@ -298,9 +296,9 @@ static inline long kexec_load(void *entry, unsigned long nr_segments,
 
 
 
-## kexec内核态
+## 2.3 kexec内核态
 
-### crashkernel
+### 2.3.1 crashkernel
 
 crashkernel表示给capture kernel预留的内存.
 
@@ -374,7 +372,7 @@ static void __init reserve_crashkernel(void)
 
 
 
-### sys_kexec_load
+### 2.3.2 sys_kexec_load
 
 kexec在用户态调用**NR_kexec_load(104)**的系统调用后，最终会执行到kernel态的sys_kexec_load
 
@@ -563,7 +561,7 @@ image->start = entry
 
 
 
-### kexec相关节点
+### 2.3.3 kexec相关节点
 
 **/sys/kernel/kexec_loaded**: 快速切换kernel是否打开
 
@@ -635,9 +633,9 @@ KERNEL_ATTR_RO(vmcoreinfo);
 
 
 
-# kdump
+# 3. kdump
 
-## 触发kdump
+## 3.1 触发kdump
 
 当kernel panic后， 最终会走到 __crash_kexec
 
@@ -989,9 +987,9 @@ purgatory_start主要完成两个功能
 
 
 
-## dump vmcore
+## 3.2 dump vmcore
 
-### elfcorehdr
+### 3.2.1 elfcorehdr
 
 kernel每次启动时， 都会去检查elfcorehdr是否存在。elfcorehdr主要是为ELF core header预留内存
 
@@ -1048,7 +1046,7 @@ ELF core header信息会存储到**elfcorehdr_addr**/**elfcorehdr_size**
 
 
 
-### vmcore_init
+### 3.2.2 vmcore_init
 
 vmcore_init实现如下
 
@@ -1293,7 +1291,7 @@ static ssize_t __read_vmcore(char *buffer, size_t buflen, loff_t *fpos,
 
 ![vmcore_02.jpg](http://ww1.sinaimg.cn/large/006CVPwLly1g9eqcpu0r1j30qo0k0my3.jpg)
 
-### 导出vmcore
+### 3.2.3 导出vmcore
 
 新的kernel启动后， 我们可以直接导出/proc/vmcore,  如在挂载文件系统后， 将/proc/vmcore压缩到本地硬盘。
 
@@ -1305,7 +1303,7 @@ $ tar -czf /mnt/vmcore.tar.gz /proc/vmcore
 
 
 
-## 分析vmcore
+## 3.3 分析vmcore
 
 /proc/vmcore导出后， 通常借助crash工具进行离线分析。
 
@@ -1406,8 +1404,7 @@ PID: 978    TASK: ffffffc2ea91bc00  CPU: 0   COMMAND: "bash"
 ---
 
 
-
-![programmer8.jpg](http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg)
+![程序员自我修养](http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg)
 
 <center>
 程序员自我修养(ID: dumphex)
