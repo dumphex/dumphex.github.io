@@ -1,6 +1,7 @@
 ---
 title: 深入学习kdump原理
 date: 2020-02-15 18:00:00
+modified: 2020-02-17 10:06:00
 tags:
 - kernel
 - kdump
@@ -1411,3 +1412,5 @@ PID: 978    TASK: ffffffc2ea91bc00  CPU: 0   COMMAND: "bash"
 <center>
 程序员自我修养(ID: dumphex)
 </center>
+
+---
