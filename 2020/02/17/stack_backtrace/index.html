@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"dumphex.github.io","root":"/","scheme":"Gemini","version":"7.7.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文以Linux + arm64平台上的测试程序为例，讲解函数调用的栈帧回溯基本原理。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="函数调用栈帧回溯">
+<meta property="og:url" content="https://dumphex.github.io/2020/02/17/stack_backtrace/index.html">
+<meta property="og:site_name" content="程序员自我修养">
+<meta property="og:description" content="本文以Linux + arm64平台上的测试程序为例，讲解函数调用的栈帧回溯基本原理。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbmsdpl4rfj30su0pfju2.jpg">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+<meta property="article:published_time" content="2020-02-17T03:00:00.000Z">
+<meta property="article:modified_time" content="2020-02-25T05:50:24.056Z">
+<meta property="article:author" content="dumphex">
+<meta property="article:tag" content="arm64">
+<meta property="article:tag" content="stack">
+<meta property="article:tag" content="backtrace">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbmsdpl4rfj30su0pfju2.jpg">
+
+<link rel="canonical" href="https://dumphex.github.io/2020/02/17/stack_backtrace/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true
+  };
+</script>
+
+  <title>函数调用栈帧回溯 | 程序员自我修养</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">程序员自我修养</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-sitemap">
+
+    <a href="/sitemap.xml" rel="section"><i class="fa fa-fw fa-sitemap"></i>站点地图</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+
+</nav>
+  <div class="site-search">
+    <div class="popup search-popup">
+    <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocorrect="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result"></div>
+
+</div>
+<div class="search-pop-overlay"></div>
+
+  </div>
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://dumphex.github.io/2020/02/17/stack_backtrace/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="dumphex">
+      <meta itemprop="description" content="专注于Linux/Android/C/C++等">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="程序员自我修养">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          函数调用栈帧回溯
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2020-02-17 11:00:00" itemprop="dateCreated datePublished" datetime="2020-02-17T11:00:00+08:00">2020-02-17</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2020-02-25 13:50:24" itemprop="dateModified" datetime="2020-02-25T13:50:24+08:00">2020-02-25</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Linux/" itemprop="url" rel="index">
+                    <span itemprop="name">Linux</span>
+                  </a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文以<strong>Linux + arm64平台</strong>上的测试程序为例，讲解函数调用的栈帧回溯基本原理。</p>
+<a id="more"></a>
+
+<h1 id="1-Overview"><a href="#1-Overview" class="headerlink" title="1. Overview"></a>1. Overview</h1><p>相关的函数调用规范，可参考arm官方的<a href="https://developer.arm.com/docs/ihi0055/d/procedure-call-standard-for-the-arm-64-bit-architecture" target="_blank" rel="noopener">aapcs64文档</a></p>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbmsdpl4rfj30su0pfju2.jpg" alt="undefined"></p>
+<h1 id="2-Demo"><a href="#2-Demo" class="headerlink" title="2. Demo"></a>2. Demo</h1><h2 id="2-1-堆栈"><a href="#2-1-堆栈" class="headerlink" title="2.1 堆栈"></a>2.1 堆栈</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">Thread 9 (LWP 1386):</span><br><span class="line">#0  0x0000007faec8fd28 in ?? ()</span><br><span class="line">#1  0x0000007faf208190 in osal_memcpy (dst&#x3D;0x7f0e6cc727, src&#x3D;0x7f08024180, count&#x3D;32477) at vdi&#x2F;linux&#x2F;vdi_osal.c:335</span><br><span class="line">#2  0x0000007faf205278 in vdi_write_memory (core_idx&#x3D;3, dst_addr&#x3D;17924376359, src_data&#x3D;0x7f08024180 &quot;&quot;, len&#x3D;32477, endian&#x3D;16) at vdi&#x2F;linux&#x2F;vdi.c:1300</span><br><span class="line">... ...</span><br><span class="line">#11 0x000000000044e9b8 in bmMonkey::VPUTask::VideoCapture::read (this&#x3D;0x7f917f90e8, frame&#x3D;0x7f08013e40) at &#x2F;jenkins&#x2F;projects&#x2F;AI_BSP_bmMonkey_daily_build&#x2F;bmMonkey&#x2F;src&#x2F;bmMonkey.cpp:279</span><br><span class="line">#12 0x000000000044ef3c in bmMonkey::VPUTask::run (this&#x3D;0x4b8900, seq&#x3D;2) at &#x2F;jenkins&#x2F;projects&#x2F;AI_BSP_bmMonkey_daily_build&#x2F;bmMonkey&#x2F;src&#x2F;bmMonkey.cpp:326</span><br><span class="line">... ...</span><br><span class="line">#19 0x0000007faeee73bc in ?? ()</span><br><span class="line">Backtrace stopped: previous frame identical to this frame (corrupt stack?)</span><br></pre></td></tr></table></figure>
+
+<p>这里就以#12和#11栈帧为例</p>
+<h2 id="2-2-查看-12栈帧-caller"><a href="#2-2-查看-12栈帧-caller" class="headerlink" title="2.2 查看#12栈帧(caller)"></a>2.2 查看#12栈帧(caller)</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line">(gdb) f 12</span><br><span class="line">#12 0x000000000044ef3c in bmMonkey::VPUTask::run (this&#x3D;0x4b8900, seq&#x3D;2) at </span><br><span class="line"></span><br><span class="line">(gdb) i r</span><br><span class="line">x0             0x7f0e6cc727	545702856487</span><br><span class="line">x1             0x7f08024a79	545595214457</span><br><span class="line">x2             0x7594	30100</span><br><span class="line">x3             0x7f0e6ccfe0	545702858720</span><br><span class="line">x4             0x7f0802c05d	545595244637</span><br><span class="line">x5             0x7f0e6d4604	545702888964</span><br><span class="line">x6             0xced9c821daa46d83	-3541579584222499453</span><br><span class="line">x7             0xae3ab9e9ba49762c	-5892192748956977620</span><br><span class="line">x8             0x882dfd5053b622c8	-8633966389155716408</span><br><span class="line">x9             0x10f14ede4ad483f6	1220843690639262710</span><br><span class="line">x10            0x544ccab1c46ccb2	379653303891840178</span><br><span class="line">x11            0xe324afdbaeaae7b	1022962518989647483</span><br><span class="line">x12            0xb051c1241528b35f	-5741595689202699425</span><br><span class="line">x13            0xd87b19b469eae132	-2847654076719898318</span><br><span class="line">x14            0x7	7</span><br><span class="line">x15            0x2dc62c8656e5	50329173776101</span><br><span class="line">x16            0x7faf233440	548399166528</span><br><span class="line">x17            0x7faec8fc10	548393253904</span><br><span class="line">x18            0x0	0</span><br><span class="line">x19            0x7f08007df8	545595096568</span><br><span class="line">x20            0x4b8900	4950272</span><br><span class="line">x21            0x7fc88517de	548825012190</span><br><span class="line">x22            0x7fc88517df	548825012191</span><br><span class="line">x23            0x0	0</span><br><span class="line">x24            0x4bc170	4964720</span><br><span class="line">x25            0x1000	4096</span><br><span class="line">x26            0x1	1</span><br><span class="line">x27            0x7fb201f030	548447318064</span><br><span class="line">x28            0x7fc88517e8	548825012200</span><br><span class="line">x29            0x7f917f90b0	547901903024</span><br><span class="line">x30            0x44ef3c	4517692</span><br><span class="line">sp             0x7f917f90b0	0x7f917f90b0</span><br><span class="line">pc             0x44ef3c	0x44ef3c &lt;bmMonkey::VPUTask::run(unsigned long)+720&gt;</span><br><span class="line">cpsr           0x20000000	[ EL&#x3D;0 C ]</span><br><span class="line">fpsr           0x10	16</span><br><span class="line">fpcr           0x0	0</span><br></pre></td></tr></table></figure>
+
+<p>反汇编当前函数</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas</span><br><span class="line">Dump of assembler code for function bmMonkey::VPUTask::run(unsigned long):</span><br><span class="line">   0x000000000044ec6c &lt;+0&gt;:	stp	x29, x30, [sp,#-352]!</span><br><span class="line">   0x000000000044ec70 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x000000000044ec74 &lt;+8&gt;:	stp	x19, x20, [sp,#16]</span><br><span class="line">   0x000000000044ec78 &lt;+12&gt;:	str	x0, [x29,#40]</span><br><span class="line">   0x000000000044ec7c &lt;+16&gt;:	str	x1, [x29,#32]</span><br><span class="line">   0x000000000044ec80 &lt;+20&gt;:	ldr	x0, [x29,#40]</span><br><span class="line">   0x000000000044ec84 &lt;+24&gt;:	bl	0x449484 &lt;bmMonkey::Task::getName[abi:cxx11]() const&gt;</span><br><span class="line"></span><br><span class="line">   ... ...</span><br><span class="line">   </span><br><span class="line">   0x000000000044ef1c &lt;+688&gt;:	and	w0, w0, #0xff</span><br><span class="line">   0x000000000044ef20 &lt;+692&gt;:	eor	w0, w0, #0x1</span><br><span class="line">   0x000000000044ef24 &lt;+696&gt;:	and	w0, w0, #0xff</span><br><span class="line">   0x000000000044ef28 &lt;+700&gt;:	cmp	w0, #0x0</span><br><span class="line">   0x000000000044ef2c &lt;+704&gt;:	b.eq	0x44f070 &lt;bmMonkey::VPUTask::run(unsigned long)+1028&gt;</span><br><span class="line">   0x000000000044ef30 &lt;+708&gt;:	ldr	x1, [x29,#48]</span><br><span class="line">   0x000000000044ef34 &lt;+712&gt;:	add	x0, x29, #0x38</span><br><span class="line">   0x000000000044ef38 &lt;+716&gt;:	bl	0x44e850 &lt;bmMonkey::VPUTask::VideoCapture::read(AVFrame*)&gt;</span><br><span class="line">&#x3D;&gt; 0x000000000044ef3c &lt;+720&gt;:	and	w0, w0, #0xff</span><br><span class="line">   0x000000000044ef40 &lt;+724&gt;:	strb	w0, [x29,#335]</span><br><span class="line">   0x000000000044ef44 &lt;+728&gt;:	ldrb	w0, [x29,#335]</span><br><span class="line">   0x000000000044ef48 &lt;+732&gt;:	eor	w0, w0, #0x1</span><br><span class="line">   0x000000000044ef4c &lt;+736&gt;:	and	w0, w0, #0xff</span><br><span class="line">   0x000000000044ef50 &lt;+740&gt;:	cmp	w0, #0x0</span><br><span class="line">   </span><br><span class="line">   ... ...</span><br><span class="line">   </span><br><span class="line">   0x000000000044f114 &lt;+1192&gt;:	ldp	x19, x20, [sp,#16]</span><br><span class="line">   0x000000000044f118 &lt;+1196&gt;:	ldp	x29, x30, [sp],#352</span><br><span class="line">   0x000000000044f11c &lt;+1200&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p>先看栈帧保存操作</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">0x000000000044ec6c &lt;+0&gt;:	stp	x29, x30, [sp,#-352]!</span><br><span class="line">0x000000000044ec70 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">0x000000000044ec74 &lt;+8&gt;:	stp	x19, x20, [sp,#16]</span><br></pre></td></tr></table></figure>
+
+<p>目前获取的信息如下</p>
+<ul>
+<li>#12保存的寄存器有: fp, lr, x19, x20</li>
+<li>当前fp=0x7f917f90b0</li>
+<li>下一条待执行的指令地址为0x44ef3c</li>
+</ul>
+<p>最后函数退出前，会再恢复</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">0x000000000044f114 &lt;+1192&gt;:	ldp	x19, x20, [sp,#16]</span><br><span class="line">0x000000000044f118 &lt;+1196&gt;:	ldp	x29, x30, [sp],#352</span><br><span class="line">0x000000000044f11c &lt;+1200&gt;:	ret</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-3-查看-11栈帧-callee"><a href="#2-3-查看-11栈帧-callee" class="headerlink" title="2.3 查看#11栈帧(callee)"></a>2.3 查看#11栈帧(callee)</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line">(gdb) f 11</span><br><span class="line">#11 0x000000000044e9b8 in bmMonkey::VPUTask::VideoCapture::read (this&#x3D;0x7f917f90e8, frame&#x3D;0x7f08013e40) at </span><br><span class="line"></span><br><span class="line">(gdb) i r</span><br><span class="line">x0             0x7f0e6cc727	545702856487</span><br><span class="line">x1             0x7f08024a79	545595214457</span><br><span class="line">x2             0x7594	30100</span><br><span class="line">x3             0x7f0e6ccfe0	545702858720</span><br><span class="line">x4             0x7f0802c05d	545595244637</span><br><span class="line">x5             0x7f0e6d4604	545702888964</span><br><span class="line">x6             0xced9c821daa46d83	-3541579584222499453</span><br><span class="line">x7             0xae3ab9e9ba49762c	-5892192748956977620</span><br><span class="line">x8             0x882dfd5053b622c8	-8633966389155716408</span><br><span class="line">x9             0x10f14ede4ad483f6	1220843690639262710</span><br><span class="line">x10            0x544ccab1c46ccb2	379653303891840178</span><br><span class="line">x11            0xe324afdbaeaae7b	1022962518989647483</span><br><span class="line">x12            0xb051c1241528b35f	-5741595689202699425</span><br><span class="line">x13            0xd87b19b469eae132	-2847654076719898318</span><br><span class="line">x14            0x7	7</span><br><span class="line">x15            0x2dc62c8656e5	50329173776101</span><br><span class="line">x16            0x7faf233440	548399166528</span><br><span class="line">x17            0x7faec8fc10	548393253904</span><br><span class="line">x18            0x0	0</span><br><span class="line">x19            0x7f08007df8	545595096568</span><br><span class="line">x20            0x4b8900	4950272</span><br><span class="line">x21            0x7fc88517de	548825012190</span><br><span class="line">x22            0x7fc88517df	548825012191</span><br><span class="line">x23            0x0	0</span><br><span class="line">x24            0x4bc170	4964720</span><br><span class="line">x25            0x1000	4096</span><br><span class="line">x26            0x1	1</span><br><span class="line">x27            0x7fb201f030	548447318064</span><br><span class="line">x28            0x7fc88517e8	548825012200</span><br><span class="line">x29            0x7f917f9040	547901902912</span><br><span class="line">x30            0x44e9b8	4516280</span><br><span class="line">sp             0x7f917f9040	0x7f917f9040</span><br><span class="line">pc             0x44e9b8	0x44e9b8 &lt;bmMonkey::VPUTask::VideoCapture::read(AVFrame*)+360&gt;</span><br><span class="line">cpsr           0x20000000	[ EL&#x3D;0 C ]</span><br><span class="line">fpsr           0x10	16</span><br><span class="line">fpcr           0x0	0</span><br></pre></td></tr></table></figure>
+
+<p>反汇编当前函数</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas</span><br><span class="line">Dump of assembler code for function bmMonkey::VPUTask::VideoCapture::read(AVFrame*):</span><br><span class="line">   0x000000000044e850 &lt;+0&gt;:	stp	x29, x30, [sp,#-112]!</span><br><span class="line">   0x000000000044e854 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x000000000044e858 &lt;+8&gt;:	str	x19, [sp,#16]</span><br><span class="line">   0x000000000044e85c &lt;+12&gt;:	str	x0, [x29,#40]</span><br><span class="line">   0x000000000044e860 &lt;+16&gt;:	str	x1, [x29,#32]</span><br><span class="line">   0x000000000044e864 &lt;+20&gt;:	ldr	x0, [x29,#40]</span><br><span class="line">   0x000000000044e868 &lt;+24&gt;:	ldr	x2, [x0,#96]</span><br><span class="line">   0x000000000044e86c &lt;+28&gt;:	ldr	x0, [x29,#40]</span><br><span class="line">   0x000000000044e870 &lt;+32&gt;:	add	x0, x0, #0x8</span><br><span class="line">   0x000000000044e874 &lt;+36&gt;:	mov	x1, x0</span><br><span class="line">   0x000000000044e878 &lt;+40&gt;:	mov	x0, x2</span><br><span class="line">   0x000000000044e87c &lt;+44&gt;:	bl	0x447350 &lt;av_read_frame@plt&gt;</span><br><span class="line"></span><br><span class="line">   ... ...</span><br><span class="line">   0x000000000044e9ac &lt;+348&gt;:	mov	x1, x0</span><br><span class="line">   0x000000000044e9b0 &lt;+352&gt;:	mov	x0, x2</span><br><span class="line">   0x000000000044e9b4 &lt;+356&gt;:	bl	0x446cc0 &lt;avcodec_send_packet@plt&gt;</span><br><span class="line">&#x3D;&gt; 0x000000000044e9b8 &lt;+360&gt;:	str	w0, [x29,#108]</span><br><span class="line">   0x000000000044e9bc &lt;+364&gt;:	ldr	w0, [x29,#108]</span><br><span class="line">   0x000000000044e9c0 &lt;+368&gt;:	cmp	w0, #0x0</span><br><span class="line"></span><br><span class="line">   ... ...</span><br><span class="line">   </span><br><span class="line">   0x000000000044ec60 &lt;+1040&gt;:	ldr	x19, [sp,#16]</span><br><span class="line">   0x000000000044ec64 &lt;+1044&gt;:	ldp	x29, x30, [sp],#112</span><br><span class="line">   0x000000000044ec68 &lt;+1048&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+
+<p>先看栈帧保存操作</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">0x000000000044e850 &lt;+0&gt;:	stp	x29, x30, [sp,#-112]!</span><br><span class="line">0x000000000044e854 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">0x000000000044e858 &lt;+8&gt;:	str	x19, [sp,#16]</span><br></pre></td></tr></table></figure>
+<p>这里保存了fp/lr/x19三个寄存器值</p>
+<p>最后函数退出前，会再恢复</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">0x000000000044ec60 &lt;+1040&gt;:	ldr	x19, [sp,#16]</span><br><span class="line">0x000000000044ec64 &lt;+1044&gt;:	ldp	x29, x30, [sp],#112</span><br><span class="line">0x000000000044ec68 &lt;+1048&gt;:	ret</span><br></pre></td></tr></table></figure>
+
+<p>#11栈帧里， 存储了caller也就是#12栈帧的部分信息</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;14xg 0x7f917f9040 </span><br><span class="line">0x7f917f9040:	0x0000007f917f90b0	0x000000000044ef3c</span><br><span class="line">0x7f917f9050:	0x0000007f08007df8	0x0000007f917f9090</span><br><span class="line">0x7f917f9060:	0x0000007f08013e40	0x0000007f917f90e8</span><br><span class="line">0x7f917f9070:	0x0000007f917f9090	0x000000050000ffff</span><br><span class="line">0x7f917f9080:	0x0000007f917f90b0	0x000000000044ef1c</span><br><span class="line">0x7f917f9090:	0x0000000000989680	0x00000000004b8928</span><br><span class="line">0x7f917f90a0:	0x0000000500000005	0x00000000004b8928</span><br></pre></td></tr></table></figure>
+
+<p>前面三个64bit值分别保存的是</p>
+<ul>
+<li>0x0000007f917f90b0是#12栈帧的fp</li>
+<li>0x000000000044ef3c是#12栈帧里待执行的下一条指令地址</li>
+<li>0x0000007f08007df8是#12栈帧里的x19</li>
+</ul>
+<p>也就是，我们可以通过#11推导出#12. 以此类推，#12也可以推导出#13等。</p>
+<h1 id="3-总结"><a href="#3-总结" class="headerlink" title="3. 总结"></a>3. 总结</h1><ul>
+<li>默认情况下，arm64平台的每个栈帧都会保存fp(x29)和lr(x30)两个寄存器. 通过递归这两个寄存器，可以得到整个backtrace.</li>
+<li>-fomit-frame-pointer编译选项可以优化掉fp</li>
+</ul>
+<hr>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg" alt="程序员自我修养"></p>
+<center>
+程序员自我修养(ID: dumphex)
+</center>
+
+<hr>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div>坚持技术原创，感谢您的支持！</div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpg" alt="dumphex 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpg" alt="dumphex 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>dumphex
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://dumphex.github.io/2020/02/17/stack_backtrace/" title="函数调用栈帧回溯">https://dumphex.github.io/2020/02/17/stack_backtrace/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fa fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/arm64/" rel="tag"># arm64</a>
+              <a href="/tags/stack/" rel="tag"># stack</a>
+              <a href="/tags/backtrace/" rel="tag"># backtrace</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/02/15/kdump/" rel="prev" title="深入学习kdump原理">
+      <i class="fa fa-chevron-left"></i> 深入学习kdump原理
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2020/02/19/reference/" rel="next" title="c++左值引用">
+      c++左值引用 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let activeClass = CONFIG.comments.activeClass;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#1-Overview"><span class="nav-text">1. Overview</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#2-Demo"><span class="nav-text">2. Demo</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-堆栈"><span class="nav-text">2.1 堆栈</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-查看-12栈帧-caller"><span class="nav-text">2.2 查看#12栈帧(caller)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-查看-11栈帧-callee"><span class="nav-text">2.3 查看#11栈帧(callee)</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#3-总结"><span class="nav-text">3. 总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="dumphex"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">dumphex</p>
+  <div class="site-description" itemprop="description">专注于Linux/Android/C/C++等</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">4</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">9</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/dumphex" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;dumphex" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/3151a9dcd169" title="简书 → https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;3151a9dcd169" rel="noopener" target="_blank"><i class="fa fa-fw fa-book"></i>简书</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/images/programmer_qrcode.jpg" title="Wechat → images&#x2F;programmer_qrcode.jpg"><i class="fa fa-fw fa-wechat"></i>Wechat</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/dumphex@163.com" title="E-Mail → dumphex@163.com"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">dumphex</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  </div>
+  <span class="post-meta-divider">|</span>
+  <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.7.1
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+  <script>
+    (function(){
+      var bp = document.createElement('script');
+      var curProtocol = window.location.protocol.split(':')[0];
+      bp.src = (curProtocol === 'https') ? 'https://zz.bdstatic.com/linksubmit/push.js' : 'http://push.zhanzhang.baidu.com/push.js';
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(bp, s);
+    })();
+  </script>
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

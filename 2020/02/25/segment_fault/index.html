@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"dumphex.github.io","root":"/","scheme":"Gemini","version":"7.7.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文将基于一个简单的用户态段错误问题，简单梳理下arm64平台SegmentFault处理流程。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="SegmentFault处理流程">
+<meta property="og:url" content="https://dumphex.github.io/2020/02/25/segment_fault/index.html">
+<meta property="og:site_name" content="程序员自我修养">
+<meta property="og:description" content="本文将基于一个简单的用户态段错误问题，简单梳理下arm64平台SegmentFault处理流程。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/006CVPwLly1ga7sduhkiij30tu0ho3zl.jpg">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+<meta property="article:published_time" content="2020-02-25T05:51:49.000Z">
+<meta property="article:modified_time" content="2020-02-25T06:02:52.071Z">
+<meta property="article:author" content="dumphex">
+<meta property="article:tag" content="arm64">
+<meta property="article:tag" content="SegmentFault">
+<meta property="article:tag" content="kernel">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://ww1.sinaimg.cn/large/006CVPwLly1ga7sduhkiij30tu0ho3zl.jpg">
+
+<link rel="canonical" href="https://dumphex.github.io/2020/02/25/segment_fault/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true
+  };
+</script>
+
+  <title>SegmentFault处理流程 | 程序员自我修养</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">程序员自我修养</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-sitemap">
+
+    <a href="/sitemap.xml" rel="section"><i class="fa fa-fw fa-sitemap"></i>站点地图</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+
+</nav>
+  <div class="site-search">
+    <div class="popup search-popup">
+    <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocorrect="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result"></div>
+
+</div>
+<div class="search-pop-overlay"></div>
+
+  </div>
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://dumphex.github.io/2020/02/25/segment_fault/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="dumphex">
+      <meta itemprop="description" content="专注于Linux/Android/C/C++等">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="程序员自我修养">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          SegmentFault处理流程
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-02-25 13:51:49 / 修改时间：14:02:52" itemprop="dateCreated datePublished" datetime="2020-02-25T13:51:49+08:00">2020-02-25</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Linux/" itemprop="url" rel="index">
+                    <span itemprop="name">Linux</span>
+                  </a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文将基于一个简单的用户态段错误问题，简单梳理下arm64平台SegmentFault处理流程。</p>
+<a id="more"></a>
+
+<h1 id="1-demo"><a href="#1-demo" class="headerlink" title="1. demo"></a>1. demo</h1><h2 id="1-1-运行环境"><a href="#1-1-运行环境" class="headerlink" title="1.1 运行环境"></a>1.1 运行环境</h2><ul>
+<li>Linux + arm64平台</li>
+<li>kernel 4.9</li>
+</ul>
+<h2 id="1-2-测试程序-el0-da-c"><a href="#1-2-测试程序-el0-da-c" class="headerlink" title="1.2 测试程序(el0_da.c)"></a>1.2 测试程序(el0_da.c)</h2><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stddef.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span> *argv[])</span> </span>&#123;</span><br><span class="line">  <span class="keyword">char</span> *p = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">  *p = <span class="number">1</span>; </span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">0000000000000000 &lt;main&gt;:</span><br><span class="line">   0:	d10083ff 	sub	sp, sp, #0x20</span><br><span class="line">   4:	b9000fe0 	str	w0, [sp,#12]</span><br><span class="line">   8:	f90003e1 	str	x1, [sp]</span><br><span class="line">   c:	f9000fff 	str	xzr, [sp,#24]</span><br><span class="line">  10:	f9400fe0 	ldr	x0, [sp,#24]</span><br><span class="line">  14:	52800021 	mov	w1, #0x1                   	&#x2F;&#x2F; #1</span><br><span class="line">  18:	39000001 	strb	w1, [x0]</span><br><span class="line">  1c:	52800000 	mov	w0, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">  20:	910083ff 	add	sp, sp, #0x20</span><br><span class="line">  24:	d65f03c0 	ret</span><br></pre></td></tr></table></figure>
+
+<h2 id="1-3-运行结果"><a href="#1-3-运行结果" class="headerlink" title="1.3 运行结果"></a>1.3 运行结果</h2><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">./run.sh: line 9:  1131 Segmentation fault      (core dumped) ./el0_da</span><br></pre></td></tr></table></figure>
+
+<p>dmesg打印的kenrel log如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line">$ dmesg -c</span><br><span class="line">[  720.577925] [1] el0_da[1131]: unhandled level 1 translation fault (11) at 0x00000000, esr 0x92000045</span><br><span class="line">[  720.587064] [1] pgd &#x3D; ffffffc274af0000</span><br><span class="line">[  720.590821] [1] [00000000] *pgd&#x3D;0000000000000000</span><br><span class="line">[  720.595271] [1] , *pud&#x3D;0000000000000000</span><br><span class="line">[  720.599104] [1] </span><br><span class="line">[  720.600942] [1] </span><br><span class="line">[  720.602778] [1] CPU: 1 PID: 1131 Comm: el0_da Not tainted 4.9.38-timchip-v4.3.0-00361-gd5024dc9d6f5 #1</span><br><span class="line">[  720.611989] [1] Hardware name: linux,dummy-virt (DT)</span><br><span class="line">[  720.616951] [1] task: ffffffc26c9fb000 task.stack: ffffffc276cf8000</span><br><span class="line">[  720.623216] [1] PC is at 0x5593dfa800</span><br><span class="line">[  720.626876] [1] LR is at 0x7f7dd27364</span><br><span class="line">[  720.630537] [1] pc : [&lt;0000005593dfa800&gt;] lr : [&lt;0000007f7dd27364&gt;] pstate: 60000000</span><br><span class="line">[  720.638273] [1] sp : 0000007fcc5b8590</span><br><span class="line">[  720.641932] [1] x29: 0000007fcc5b85b0 x28: 0000000000000000 </span><br><span class="line">[  720.647611] [1] x27: 0000000000000000 x26: 0000000000000000 </span><br><span class="line">[  720.653287] [1] x25: 0000000000000000 x24: 0000000000000000 </span><br><span class="line">[  720.658963] [1] x23: 0000000000000000 x22: 0000000000000000 </span><br><span class="line">[  720.664643] [1] x21: 0000005593dfa6a0 x20: 0000000000000000 </span><br><span class="line">[  720.670319] [1] x19: 0000005593dfa810 x18: 0000000000040926 </span><br><span class="line">[  720.675998] [1] x17: 0000005593e0b008 x16: 0000007f7dd27288 </span><br><span class="line">[  720.681675] [1] x15: 000000000000080d x14: 0000000000000000 </span><br><span class="line">[  720.687351] [1] x13: 0000007f7de80028 x12: 0000007f7de80030 </span><br><span class="line">[  720.693030] [1] x11: 0000040000000000 x10: 0101010101010101 </span><br><span class="line">[  720.698706] [1] x9 : 03ffffffffffffff x8 : ffffffffffffffff </span><br><span class="line">[  720.704385] [1] x7 : 0000040000000000 x6 : 0000000000000000 </span><br><span class="line">[  720.710061] [1] x5 : 0000000000000000 x4 : 0000007fcc5b8608 </span><br><span class="line">[  720.715740] [1] x3 : 0000005593dfa7e8 x2 : 0000007fcc5b86f8 </span><br><span class="line">[  720.721416] [1] x1 : 0000000000000001 x0 : 0000000000000000 </span><br><span class="line">[  720.727091] [1]</span><br></pre></td></tr></table></figure>
+
+<h1 id="2-处理流程"><a href="#2-处理流程" class="headerlink" title="2. 处理流程"></a>2. 处理流程</h1><h2 id="2-1-page-fault"><a href="#2-1-page-fault" class="headerlink" title="2.1 page fault"></a>2.1 page fault</h2><ul>
+<li>用户态进程访问了非法地址后， CPU的MMU无法完成虚拟地址到物理地址的转换，从而产生page fault异常。</li>
+<li>此后，由<strong>用户态</strong>切换到<strong>内核态</strong>。</li>
+</ul>
+<h2 id="2-2-异常向量表"><a href="#2-2-异常向量表" class="headerlink" title="2.2 异常向量表"></a>2.2 异常向量表</h2><ul>
+<li>源码位于arch/arm64/kernel/entry.S</li>
+<li>用户态触发的访问内存异常， 最终会进入到异常向量表的el0_sync</li>
+</ul>
+<p>el0_sync如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * EL0 mode handlers.</span><br><span class="line"> *&#x2F;</span><br><span class="line">        .align  6</span><br><span class="line">el0_sync:</span><br><span class="line">        kernel_entry 0</span><br><span class="line">        mrs     x25, esr_el1                    &#x2F;&#x2F; read the syndrome register</span><br><span class="line">        lsr     x24, x25, #ESR_ELx_EC_SHIFT     &#x2F;&#x2F; exception class</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_SVC64          &#x2F;&#x2F; SVC in 64-bit state</span><br><span class="line">        b.eq    el0_svc</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_DABT_LOW       &#x2F;&#x2F; data abort in EL0</span><br><span class="line">        b.eq    el0_da</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_IABT_LOW       &#x2F;&#x2F; instruction abort in EL0</span><br><span class="line">        b.eq    el0_ia</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_FP_ASIMD       &#x2F;&#x2F; FP&#x2F;ASIMD access</span><br><span class="line">        b.eq    el0_fpsimd_acc</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_FP_EXC64       &#x2F;&#x2F; FP&#x2F;ASIMD exception</span><br><span class="line">        b.eq    el0_fpsimd_exc</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_SYS64          &#x2F;&#x2F; configurable trap</span><br><span class="line">        b.eq    el0_sys</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_SP_ALIGN       &#x2F;&#x2F; stack alignment exception</span><br><span class="line">        b.eq    el0_sp_pc</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_PC_ALIGN       &#x2F;&#x2F; pc alignment exception</span><br><span class="line">        b.eq    el0_sp_pc</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_UNKNOWN        &#x2F;&#x2F; unknown exception in EL0</span><br><span class="line">        b.eq    el0_undef</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_BREAKPT_LOW    &#x2F;&#x2F; debug exception in EL0</span><br><span class="line">        b.ge    el0_dbg</span><br><span class="line">        b       el0_inv</span><br></pre></td></tr></table></figure>
+
+<p>这里简单解释下</p>
+<ul>
+<li>kernel_entry: 构造pt_regs相关的数据(包括通用目的寄存器，sp, pc等)，保存到当前内核栈</li>
+<li>esr_el1是异常诊断寄存器，用于存储跳转EL1的异常相关信息<br><img src="http://ww1.sinaimg.cn/large/006CVPwLly1ga7sduhkiij30tu0ho3zl.jpg" alt="ESR"></li>
+</ul>
+<p>高6位是exception class, 用于标识当前异常的类型</p>
+<p>根据前面的测试用例，esr值为0x92000045，则exception class= esr &gt;&gt; 26 = 0x24, 对应ESR_ELx_EC_DABT_LOW</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">#define ESR_ELx_EC_DABT_LOW     (0x24)</span><br></pre></td></tr></table></figure>
+
+<p>会跳到el0_da继续处理，el0_da的实现如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">el0_da:</span><br><span class="line">	&#x2F;*</span><br><span class="line">	 * Data abort handling</span><br><span class="line">	 *&#x2F;</span><br><span class="line">	mrs	x26, far_el1</span><br><span class="line">	&#x2F;&#x2F; enable interrupts before calling the main handler</span><br><span class="line">	enable_dbg_and_irq</span><br><span class="line">	ct_user_exit</span><br><span class="line">	clear_address_tag x0, x26</span><br><span class="line">	mov	x1, x25</span><br><span class="line">	mov	x2, sp</span><br><span class="line">	bl	do_mem_abort</span><br><span class="line">	b	ret_to_user</span><br><span class="line">el0_ia:</span><br></pre></td></tr></table></figure>
+
+<p>el0_da的操作</p>
+<ul>
+<li><p>do_mem_abort()</p>
+<ul>
+<li>far_el1是出错的内存地址，保存到x0</li>
+<li>x25是esr_el1，保存到x1</li>
+<li>sp是保存的struct pt_regs基地址，保存到x2</li>
+</ul>
+</li>
+<li><p>ret_to_user()</p>
+<ul>
+<li>调用kernel_exit 0, 最终返回用户态。</li>
+</ul>
+</li>
+</ul>
+<h2 id="2-3-do-mem-abort"><a href="#2-3-do-mem-abort" class="headerlink" title="2.3 do_mem_abort"></a>2.3 do_mem_abort</h2><p>源码位于arch/arm64/mm/fault.c</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * Dispatch a data abort to the relevant handler.</span><br><span class="line"> *&#x2F;</span><br><span class="line">asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,</span><br><span class="line">					 struct pt_regs *regs)</span><br><span class="line">&#123;</span><br><span class="line">	const struct fault_info *inf &#x3D; esr_to_fault_info(esr);</span><br><span class="line">	struct siginfo info;</span><br><span class="line"></span><br><span class="line">	if (!inf-&gt;fn(addr, esr, regs))</span><br><span class="line">		return;</span><br><span class="line"></span><br><span class="line">	pr_alert(&quot;Unhandled fault: %s (0x%08x) at 0x%016lx\n&quot;,</span><br><span class="line">		 inf-&gt;name, esr, addr);</span><br><span class="line"></span><br><span class="line">	info.si_signo &#x3D; inf-&gt;sig;</span><br><span class="line">	info.si_errno &#x3D; 0;</span><br><span class="line">	info.si_code  &#x3D; inf-&gt;code;</span><br><span class="line">	info.si_addr  &#x3D; (void __user *)addr;</span><br><span class="line">	arm64_notify_die(&quot;&quot;, regs, &amp;info, esr);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>esr_to_fault_info()函数用于从esr的低6bit取出<strong>错误状态码DFSC(Data Fault Status Code)</strong></p>
+<table>
+<thead>
+<tr>
+<th>DFSC</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>000000</td>
+<td>Address size fault, level 0 of translation or translation table base register</td>
+</tr>
+<tr>
+<td>000001</td>
+<td>Address size fault, level 1</td>
+</tr>
+<tr>
+<td>000010</td>
+<td>Address size fault, level 2</td>
+</tr>
+<tr>
+<td>000011</td>
+<td>Address size fault, level 3</td>
+</tr>
+<tr>
+<td>000100</td>
+<td>Translation fault, level 0</td>
+</tr>
+<tr>
+<td>000101</td>
+<td>Translation fault, level 1</td>
+</tr>
+<tr>
+<td>000110</td>
+<td>Translation fault, level 2</td>
+</tr>
+<tr>
+<td>000111</td>
+<td>Translation fault, level 3</td>
+</tr>
+<tr>
+<td>001001</td>
+<td>Access flag fault, level 1</td>
+</tr>
+<tr>
+<td>001010</td>
+<td>Access flag fault, level 2</td>
+</tr>
+<tr>
+<td>001011</td>
+<td>Access flag fault, level 3</td>
+</tr>
+<tr>
+<td>001101</td>
+<td>Permission fault, level 1</td>
+</tr>
+<tr>
+<td>001110</td>
+<td>Permission fault, level 2</td>
+</tr>
+<tr>
+<td>001111</td>
+<td>Permission fault, level 3</td>
+</tr>
+<tr>
+<td>010000</td>
+<td>Synchronous External abort, not on translation table walk</td>
+</tr>
+<tr>
+<td>011000</td>
+<td>Synchronous parity or ECC error on memory access, not on translation table walk</td>
+</tr>
+<tr>
+<td>010100</td>
+<td>Synchronous External abort, on translation table walk, level 0</td>
+</tr>
+<tr>
+<td>010101</td>
+<td>Synchronous External abort, on translation table walk, level 1</td>
+</tr>
+<tr>
+<td>010110</td>
+<td>Synchronous External abort, on translation table walk, level 2</td>
+</tr>
+<tr>
+<td>010111</td>
+<td>Synchronous External abort, on translation table walk, level 3</td>
+</tr>
+<tr>
+<td>011100</td>
+<td>Synchronous parity or ECC error on memory access on translation table walk, level 0</td>
+</tr>
+<tr>
+<td>011101</td>
+<td>Synchronous parity or ECC error on memory access on translation table walk, level 1</td>
+</tr>
+<tr>
+<td>011110</td>
+<td>Synchronous parity or ECC error on memory access on translation table walk, level 2</td>
+</tr>
+<tr>
+<td>011111</td>
+<td>Synchronous parity or ECC error on memory access on translation table walk, level 3</td>
+</tr>
+<tr>
+<td>100001</td>
+<td>Alignment fault</td>
+</tr>
+<tr>
+<td>110000</td>
+<td>TLB conflict abort</td>
+</tr>
+<tr>
+<td>110001</td>
+<td>Unsupported atomic hardware update fault, if the implementation includes ARMv8.1-TTHM. Otherwise reserved.</td>
+</tr>
+<tr>
+<td>110100</td>
+<td>IMPLEMENTATION DEFINED fault (Lockdown)</td>
+</tr>
+<tr>
+<td>110101</td>
+<td>IMPLEMENTATION DEFINED fault (Unsupported Exclusive or Atomic access)</td>
+</tr>
+<tr>
+<td>111101</td>
+<td>Section Domain Fault, used only for faults reported in the PAR_EL1</td>
+</tr>
+<tr>
+<td>111110</td>
+<td>Page Domain Fault, used only for faults reported in the PAR_EL1</td>
+</tr>
+</tbody></table>
+<p>而fault_info[]是一个struct fault_info结构体数组，对应这64种错误状态码的处理</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br></pre></td><td class="code"><pre><span class="line">static const struct fault_info fault_info[] &#x3D; &#123; </span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;ttbr address size fault&quot;       &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;level 1 address size fault&quot;    &#125;,  </span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;level 2 address size fault&quot;    &#125;,  </span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;level 3 address size fault&quot;    &#125;,  </span><br><span class="line">        &#123; do_translation_fault, SIGSEGV, SEGV_MAPERR,   &quot;level 0 translation fault&quot;     &#125;,  </span><br><span class="line">        &#123; do_translation_fault, SIGSEGV, SEGV_MAPERR,   &quot;level 1 translation fault&quot;     &#125;,  </span><br><span class="line">        &#123; do_translation_fault, SIGSEGV, SEGV_MAPERR,   &quot;level 2 translation fault&quot;     &#125;,  </span><br><span class="line">        &#123; do_page_fault,        SIGSEGV, SEGV_MAPERR,   &quot;level 3 translation fault&quot;     &#125;,  </span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 8&quot;                     &#125;,</span><br><span class="line">        &#123; do_page_fault,        SIGSEGV, SEGV_ACCERR,   &quot;level 1 access flag fault&quot;     &#125;,  </span><br><span class="line">        &#123; do_page_fault,        SIGSEGV, SEGV_ACCERR,   &quot;level 2 access flag fault&quot;     &#125;,  </span><br><span class="line">        &#123; do_page_fault,        SIGSEGV, SEGV_ACCERR,   &quot;level 3 access flag fault&quot;     &#125;,  </span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 12&quot;                    &#125;,</span><br><span class="line">        &#123; do_page_fault,        SIGSEGV, SEGV_ACCERR,   &quot;level 1 permission fault&quot;      &#125;,  </span><br><span class="line">        &#123; do_page_fault,        SIGSEGV, SEGV_ACCERR,   &quot;level 2 permission fault&quot;      &#125;,  </span><br><span class="line">        &#123; do_page_fault,        SIGSEGV, SEGV_ACCERR,   &quot;level 3 permission fault&quot;      &#125;,  </span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;synchronous external abort&quot;    &#125;,  </span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 17&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 18&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 19&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;synchronous external abort (translation table walk)&quot; &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;synchronous external abort (translation table walk)&quot; &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;synchronous external abort (translation table walk)&quot; &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;synchronous external abort (translation table walk)&quot; &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;synchronous parity error&quot;      &#125;,  </span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 25&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 26&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 27&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;synchronous parity error (translation table walk)&quot; &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;synchronous parity error (translation table walk)&quot; &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;synchronous parity error (translation table walk)&quot; &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;synchronous parity error (translation table walk)&quot; &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 32&quot;                    &#125;,</span><br><span class="line">        &#123; do_alignment_fault,   SIGBUS,  BUS_ADRALN,    &quot;alignment fault&quot;               &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 34&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 35&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 36&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 37&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 38&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 39&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 40&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 41&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 42&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 43&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 44&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 45&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 46&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 47&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;TLB conflict abort&quot;            &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 49&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 50&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 51&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;implementation fault (lockdown abort)&quot; &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;implementation fault (unsupported exclusive)&quot; &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 54&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 55&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 56&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 57&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 58&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 59&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 60&quot;                    &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;section domain fault&quot;          &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;page domain fault&quot;             &#125;,</span><br><span class="line">        &#123; do_bad,               SIGBUS,  0,             &quot;unknown 63&quot;                    &#125;,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>dfsc = esr &amp; 0x3f = 0x92000045 &amp; 0x3f = 0x5, 对应fault_info[]中的第5个元素”level 1 translation fault”，下一步会跳到do_translation_fault()处理。</p>
+<h2 id="2-4-do-translation-fault"><a href="#2-4-do-translation-fault" class="headerlink" title="2.4 do_translation_fault"></a>2.4 do_translation_fault</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * First Level Translation Fault Handler</span><br><span class="line"> *</span><br><span class="line"> * We enter here because the first level page table doesn&#39;t contain a valid</span><br><span class="line"> * entry for the address.</span><br><span class="line"> *</span><br><span class="line"> * If the address is in kernel space (&gt;&#x3D; TASK_SIZE), then we are probably</span><br><span class="line"> * faulting in the vmalloc() area.</span><br><span class="line"> *</span><br><span class="line"> * If the init_task&#39;s first level page tables contains the relevant entry, we</span><br><span class="line"> * copy the it to this task.  If not, we send the process a signal, fixup the</span><br><span class="line"> * exception, or oops the kernel.</span><br><span class="line"> *</span><br><span class="line"> * NOTE! We MUST NOT take any locks for this case. We may be in an interrupt</span><br><span class="line"> * or a critical region, and should only copy the information from the master</span><br><span class="line"> * page table, nothing more.</span><br><span class="line"> *&#x2F;</span><br><span class="line">static int __kprobes do_translation_fault(unsigned long addr,</span><br><span class="line">					  unsigned int esr,</span><br><span class="line">					  struct pt_regs *regs)</span><br><span class="line">&#123;</span><br><span class="line">	if (addr &lt; TASK_SIZE)</span><br><span class="line">		return do_page_fault(addr, esr, regs);</span><br><span class="line"></span><br><span class="line">	do_bad_area(addr, esr, regs);</span><br><span class="line">	return 0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里会跳到do_page_fault()</p>
+<h2 id="2-5-do-page-fault"><a href="#2-5-do-page-fault" class="headerlink" title="2.5 do_page_fault"></a>2.5 do_page_fault</h2><p>do_page_fault()主要会调用</p>
+<ul>
+<li>__do_page_fault()</li>
+<li>__do_user_fault()</li>
+</ul>
+<p>__do_page_fault()的实现如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line">static int __do_page_fault(struct mm_struct *mm, unsigned long addr,</span><br><span class="line">                           unsigned int mm_flags, unsigned long vm_flags,</span><br><span class="line">                           struct task_struct *tsk)</span><br><span class="line">&#123;</span><br><span class="line">        struct vm_area_struct *vma;</span><br><span class="line">        int fault;</span><br><span class="line"></span><br><span class="line">        vma &#x3D; find_vma(mm, addr);</span><br><span class="line">        fault &#x3D; VM_FAULT_BADMAP;</span><br><span class="line">        if (unlikely(!vma))</span><br><span class="line">                goto out;</span><br><span class="line">        if (unlikely(vma-&gt;vm_start &gt; addr))</span><br><span class="line">                goto check_stack;</span><br><span class="line"></span><br><span class="line">        &#x2F;*</span><br><span class="line">         * Ok, we have a good vm_area for this memory access, so we can handle</span><br><span class="line">         * it.</span><br><span class="line">         *&#x2F;</span><br><span class="line">good_area:</span><br><span class="line">        &#x2F;*</span><br><span class="line">         * Check that the permissions on the VMA allow for the fault which</span><br><span class="line">         * occurred.</span><br><span class="line">         *&#x2F;</span><br><span class="line">        if (!(vma-&gt;vm_flags &amp; vm_flags)) &#123;</span><br><span class="line">                fault &#x3D; VM_FAULT_BADACCESS;</span><br><span class="line">                goto out;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        return handle_mm_fault(vma, addr &amp; PAGE_MASK, mm_flags);</span><br><span class="line"></span><br><span class="line">check_stack:</span><br><span class="line">        if (vma-&gt;vm_flags &amp; VM_GROWSDOWN &amp;&amp; !expand_stack(vma, addr))</span><br><span class="line">                goto good_area;</span><br><span class="line">out:</span><br><span class="line">        return fault;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>__do_page_fault()这里， 没有找到相应的vma， 则会直接返回。</p>
+<p>前面的page fault无法处理后， 若是用户态page fault，最终会走到__do_user_fault()</p>
+<h2 id="2-6-do-user-fault"><a href="#2-6-do-user-fault" class="headerlink" title="2.6 __do_user_fault"></a>2.6 __do_user_fault</h2><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">static void __do_user_fault(struct task_struct *tsk, unsigned long addr,</span><br><span class="line">                            unsigned int esr, unsigned int sig, int code,</span><br><span class="line">                            struct pt_regs *regs)</span><br><span class="line">&#123;</span><br><span class="line">        struct siginfo si;</span><br><span class="line">        const struct fault_info *inf;</span><br><span class="line">                </span><br><span class="line">        if (unhandled_signal(tsk, sig) &amp;&amp; show_unhandled_signals_ratelimited()) &#123;</span><br><span class="line">                inf &#x3D; esr_to_fault_info(esr);</span><br><span class="line">                pr_info(&quot;%s[%d]: unhandled %s (%d) at 0x%08lx, esr 0x%03x\n&quot;,</span><br><span class="line">                        tsk-&gt;comm, task_pid_nr(tsk), inf-&gt;name, sig,</span><br><span class="line">                        addr, esr);</span><br><span class="line">                show_pte(tsk-&gt;mm, addr);</span><br><span class="line">                show_regs(regs);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        tsk-&gt;thread.fault_address &#x3D; addr;</span><br><span class="line">        tsk-&gt;thread.fault_code &#x3D; esr;</span><br><span class="line">        si.si_signo &#x3D; sig;</span><br><span class="line">        si.si_errno &#x3D; 0;</span><br><span class="line">        si.si_code &#x3D; code;</span><br><span class="line">        si.si_addr &#x3D; (void __user *)addr;</span><br><span class="line">        force_sig_info(sig, &amp;si, tsk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>__do_user_fault()主要做几件事:</p>
+<h3 id="2-6-1-打印出错进程信息"><a href="#2-6-1-打印出错进程信息" class="headerlink" title="2.6.1 打印出错进程信息"></a>2.6.1 打印出错进程信息</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">el0_da[1131]: unhandled level 1 translation fault (11) at 0x00000000, esr 0x92000045</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-6-2-show-pte"><a href="#2-6-2-show-pte" class="headerlink" title="2.6.2  show_pte()"></a>2.6.2  show_pte()</h3><ul>
+<li>打印pgd/pud/pmd等信息<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * Dump out the page tables associated with &#39;addr&#39; in mm &#39;mm&#39;.</span><br><span class="line"> *&#x2F;</span><br><span class="line">void show_pte(struct mm_struct *mm, unsigned long addr)</span><br><span class="line">&#123;</span><br><span class="line">        pgd_t *pgd;</span><br><span class="line"></span><br><span class="line">        if (!mm)</span><br><span class="line">                mm &#x3D; &amp;init_mm;</span><br><span class="line"></span><br><span class="line">        pr_alert(&quot;pgd &#x3D; %p\n&quot;, mm-&gt;pgd);</span><br><span class="line">        pgd &#x3D; pgd_offset(mm, addr);</span><br><span class="line">        pr_alert(&quot;[%08lx] *pgd&#x3D;%016llx&quot;, addr, pgd_val(*pgd));</span><br><span class="line"></span><br><span class="line">        do &#123;</span><br><span class="line">                pud_t *pud;</span><br><span class="line">                pmd_t *pmd;</span><br><span class="line">                pte_t *pte;</span><br><span class="line"></span><br><span class="line">                if (pgd_none(*pgd) || pgd_bad(*pgd))</span><br><span class="line">                        break;</span><br><span class="line"></span><br><span class="line">                pud &#x3D; pud_offset(pgd, addr);</span><br><span class="line">                printk(&quot;, *pud&#x3D;%016llx&quot;, pud_val(*pud));</span><br><span class="line">                if (pud_none(*pud) || pud_bad(*pud))</span><br><span class="line">                        break;</span><br><span class="line"></span><br><span class="line">                pmd &#x3D; pmd_offset(pud, addr);</span><br><span class="line">                printk(&quot;, *pmd&#x3D;%016llx&quot;, pmd_val(*pmd));</span><br><span class="line">                if (pmd_none(*pmd) || pmd_bad(*pmd))</span><br><span class="line">                        break;</span><br><span class="line"></span><br><span class="line">                pte &#x3D; pte_offset_map(pmd, addr);</span><br><span class="line">                printk(&quot;, *pte&#x3D;%016llx&quot;, pte_val(*pte));</span><br><span class="line">                pte_unmap(pte);</span><br><span class="line">        &#125; while(0);</span><br><span class="line"></span><br><span class="line">        printk(&quot;\n&quot;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<h3 id="2-6-3-show-regs"><a href="#2-6-3-show-regs" class="headerlink" title="2.6.3 show_regs()"></a>2.6.3 show_regs()</h3><ul>
+<li>源码位于arch/arm64/kernel/process.c</li>
+<li>打印PC/LR/SP/通用目的寄存器等<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line">void __show_regs(struct pt_regs *regs)</span><br><span class="line">&#123;</span><br><span class="line">        int i, top_reg;</span><br><span class="line">        u64 lr, sp;</span><br><span class="line"></span><br><span class="line">        if (compat_user_mode(regs)) &#123;</span><br><span class="line">                lr &#x3D; regs-&gt;compat_lr;</span><br><span class="line">                sp &#x3D; regs-&gt;compat_sp;</span><br><span class="line">                top_reg &#x3D; 12;</span><br><span class="line">        &#125; else &#123;</span><br><span class="line">                lr &#x3D; regs-&gt;regs[30];</span><br><span class="line">                sp &#x3D; regs-&gt;sp;</span><br><span class="line">                top_reg &#x3D; 29;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        show_regs_print_info(KERN_DEFAULT);</span><br><span class="line">        print_symbol(&quot;PC is at %s\n&quot;, instruction_pointer(regs));</span><br><span class="line">        print_symbol(&quot;LR is at %s\n&quot;, lr);</span><br><span class="line">        printk(&quot;pc : [&lt;%016llx&gt;] lr : [&lt;%016llx&gt;] pstate: %08llx\n&quot;,</span><br><span class="line">               regs-&gt;pc, lr, regs-&gt;pstate);</span><br><span class="line">        printk(&quot;sp : %016llx\n&quot;, sp);</span><br><span class="line"></span><br><span class="line">        i &#x3D; top_reg;</span><br><span class="line"></span><br><span class="line">        while (i &gt;&#x3D; 0) &#123;</span><br><span class="line">                printk(&quot;x%-2d: %016llx &quot;, i, regs-&gt;regs[i]);</span><br><span class="line">                i--;</span><br><span class="line"></span><br><span class="line">                if (i % 2 &#x3D;&#x3D; 0) &#123;</span><br><span class="line">                        pr_cont(&quot;x%-2d: %016llx &quot;, i, regs-&gt;regs[i]);</span><br><span class="line">                        i--;</span><br><span class="line">                &#125;</span><br><span class="line"></span><br><span class="line">                pr_cont(&quot;\n&quot;);</span><br><span class="line">        &#125;</span><br><span class="line">        printk(&quot;\n&quot;);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">void show_regs(struct pt_regs * regs)</span><br><span class="line">&#123;</span><br><span class="line">        printk(&quot;\n&quot;);</span><br><span class="line">        __show_regs(regs);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<p>show_regs_print_info()相关</p>
+<ul>
+<li>源码位于kernel/printk/printk.c</li>
+<li>用于打印通用的debug信息<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">void dump_stack_print_info(const char *log_lvl)</span><br><span class="line">&#123;</span><br><span class="line">        printk(&quot;%sCPU: %d PID: %d Comm: %.20s %s %s %.*s\n&quot;,</span><br><span class="line">               log_lvl, raw_smp_processor_id(), current-&gt;pid, current-&gt;comm,</span><br><span class="line">               print_tainted(), init_utsname()-&gt;release,</span><br><span class="line">               (int)strcspn(init_utsname()-&gt;version, &quot; &quot;),</span><br><span class="line">               init_utsname()-&gt;version);</span><br><span class="line"></span><br><span class="line">        if (dump_stack_arch_desc_str[0] !&#x3D; &#39;\0&#39;)</span><br><span class="line">                printk(&quot;%sHardware name: %s\n&quot;,</span><br><span class="line">                       log_lvl, dump_stack_arch_desc_str);</span><br><span class="line"></span><br><span class="line">        print_worker_info(log_lvl, current);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">&#x2F;**</span><br><span class="line"> * show_regs_print_info - print generic debug info for show_regs()</span><br><span class="line"> * @log_lvl: log level</span><br><span class="line"> *</span><br><span class="line"> * show_regs() implementations can use this function to print out generic</span><br><span class="line"> * debug information.</span><br><span class="line"> *&#x2F;</span><br><span class="line">void show_regs_print_info(const char *log_lvl)</span><br><span class="line">&#123;</span><br><span class="line">        dump_stack_print_info(log_lvl);</span><br><span class="line"></span><br><span class="line">        printk(&quot;%stask: %p task.stack: %p\n&quot;,</span><br><span class="line">               log_lvl, current, task_stack_page(current));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<h3 id="2-6-4-force-sig-info"><a href="#2-6-4-force-sig-info" class="headerlink" title="2.6.4 force_sig_info()"></a>2.6.4 force_sig_info()</h3><ul>
+<li>源码位于source/kernel/signal.c</li>
+<li>用于向进程发送信号信息</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * Force a signal that the process can&#39;t ignore: if necessary</span><br><span class="line"> * we unblock the signal and change any SIG_IGN to SIG_DFL.</span><br><span class="line"> *</span><br><span class="line"> * Note: If we unblock the signal, we always reset it to SIG_DFL,</span><br><span class="line"> * since we do not want to have a signal handler that was blocked</span><br><span class="line"> * be invoked when user space had explicitly blocked it.</span><br><span class="line"> *</span><br><span class="line"> * We don&#39;t want to have recursive SIGSEGV&#39;s etc, for example,</span><br><span class="line"> * that is why we also clear SIGNAL_UNKILLABLE.</span><br><span class="line"> *&#x2F;</span><br><span class="line">int</span><br><span class="line">force_sig_info(int sig, struct siginfo *info, struct task_struct *t)</span><br><span class="line">&#123;</span><br><span class="line">	unsigned long int flags;</span><br><span class="line">	int ret, blocked, ignored;</span><br><span class="line">	struct k_sigaction *action;</span><br><span class="line"></span><br><span class="line">	spin_lock_irqsave(&amp;t-&gt;sighand-&gt;siglock, flags);</span><br><span class="line">	action &#x3D; &amp;t-&gt;sighand-&gt;action[sig-1];</span><br><span class="line">	ignored &#x3D; action-&gt;sa.sa_handler &#x3D;&#x3D; SIG_IGN;</span><br><span class="line">	blocked &#x3D; sigismember(&amp;t-&gt;blocked, sig);</span><br><span class="line">	if (blocked || ignored) &#123;</span><br><span class="line">		action-&gt;sa.sa_handler &#x3D; SIG_DFL;</span><br><span class="line">		if (blocked) &#123;</span><br><span class="line">			sigdelset(&amp;t-&gt;blocked, sig);</span><br><span class="line">			recalc_sigpending_and_wake(t);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	if (action-&gt;sa.sa_handler &#x3D;&#x3D; SIG_DFL)</span><br><span class="line">		t-&gt;signal-&gt;flags &amp;&#x3D; ~SIGNAL_UNKILLABLE;</span><br><span class="line">	ret &#x3D; specific_send_sig_info(sig, info, t);</span><br><span class="line">	spin_unlock_irqrestore(&amp;t-&gt;sighand-&gt;siglock, flags);</span><br><span class="line"></span><br><span class="line">	return ret;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static int</span><br><span class="line">specific_send_sig_info(int sig, struct siginfo *info, struct task_struct *t)</span><br><span class="line">&#123;</span><br><span class="line">	return send_signal(sig, info, t, 0);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="3-总结"><a href="#3-总结" class="headerlink" title="3. 总结"></a>3. 总结</h1><ul>
+<li>本文通过简单例子，分析SegmentFault的处理流程</li>
+<li>针对SegmentFault问题，可以借助gdb在线分析进程或离线分core dump等，来定位具体出错的地方。</li>
+</ul>
+<hr>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg" alt="程序员自我修养"></p>
+<center>
+程序员自我修养(ID: dumphex)
+</center>
+
+<hr>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div>坚持技术原创，感谢您的支持！</div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpg" alt="dumphex 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpg" alt="dumphex 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>dumphex
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://dumphex.github.io/2020/02/25/segment_fault/" title="SegmentFault处理流程">https://dumphex.github.io/2020/02/25/segment_fault/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fa fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/arm64/" rel="tag"># arm64</a>
+              <a href="/tags/SegmentFault/" rel="tag"># SegmentFault</a>
+              <a href="/tags/kernel/" rel="tag"># kernel</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/02/19/reference/" rel="prev" title="c++左值引用">
+      <i class="fa fa-chevron-left"></i> c++左值引用
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let activeClass = CONFIG.comments.activeClass;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#1-demo"><span class="nav-text">1. demo</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-1-运行环境"><span class="nav-text">1.1 运行环境</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-2-测试程序-el0-da-c"><span class="nav-text">1.2 测试程序(el0_da.c)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-3-运行结果"><span class="nav-text">1.3 运行结果</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#2-处理流程"><span class="nav-text">2. 处理流程</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-page-fault"><span class="nav-text">2.1 page fault</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-异常向量表"><span class="nav-text">2.2 异常向量表</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-3-do-mem-abort"><span class="nav-text">2.3 do_mem_abort</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-4-do-translation-fault"><span class="nav-text">2.4 do_translation_fault</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-5-do-page-fault"><span class="nav-text">2.5 do_page_fault</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-6-do-user-fault"><span class="nav-text">2.6 __do_user_fault</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-6-1-打印出错进程信息"><span class="nav-text">2.6.1 打印出错进程信息</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-6-2-show-pte"><span class="nav-text">2.6.2  show_pte()</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-6-3-show-regs"><span class="nav-text">2.6.3 show_regs()</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-6-4-force-sig-info"><span class="nav-text">2.6.4 force_sig_info()</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#3-总结"><span class="nav-text">3. 总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="dumphex"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">dumphex</p>
+  <div class="site-description" itemprop="description">专注于Linux/Android/C/C++等</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">4</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">9</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/dumphex" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;dumphex" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/3151a9dcd169" title="简书 → https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;3151a9dcd169" rel="noopener" target="_blank"><i class="fa fa-fw fa-book"></i>简书</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/images/programmer_qrcode.jpg" title="Wechat → images&#x2F;programmer_qrcode.jpg"><i class="fa fa-fw fa-wechat"></i>Wechat</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/dumphex@163.com" title="E-Mail → dumphex@163.com"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">dumphex</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  </div>
+  <span class="post-meta-divider">|</span>
+  <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.7.1
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+  <script>
+    (function(){
+      var bp = document.createElement('script');
+      var curProtocol = window.location.protocol.split(':')[0];
+      bp.src = (curProtocol === 'https') ? 'https://zz.bdstatic.com/linksubmit/push.js' : 'http://push.zhanzhang.baidu.com/push.js';
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(bp, s);
+    })();
+  </script>
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

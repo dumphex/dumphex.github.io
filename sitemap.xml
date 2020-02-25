@@ -2,9 +2,30 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://dumphex.github.io/2020/02/25/segment_fault/</loc>
+    
+    <lastmod>2020-02-25T06:02:52.071Z</lastmod>
+    
+  </url>
+  
+  <url>
+    <loc>https://dumphex.github.io/2020/02/19/reference/</loc>
+    
+    <lastmod>2020-02-25T05:50:24.056Z</lastmod>
+    
+  </url>
+  
+  <url>
+    <loc>https://dumphex.github.io/2020/02/17/stack_backtrace/</loc>
+    
+    <lastmod>2020-02-25T05:50:24.056Z</lastmod>
+    
+  </url>
+  
+  <url>
     <loc>https://dumphex.github.io/2020/02/15/kdump/</loc>
     
-    <lastmod>2020-02-15T10:12:56.802Z</lastmod>
+    <lastmod>2020-02-25T05:50:24.056Z</lastmod>
     
   </url>
   
@@ -12,13 +33,6 @@
     <loc>https://dumphex.github.io/about/index.html</loc>
     
     <lastmod>2020-02-15T09:57:39.591Z</lastmod>
-    
-  </url>
-  
-  <url>
-    <loc>https://dumphex.github.io/2020/02/14/hello-world/</loc>
-    
-    <lastmod>2020-02-14T13:08:27.601Z</lastmod>
     
   </url>
   
