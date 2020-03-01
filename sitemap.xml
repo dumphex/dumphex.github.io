@@ -2,6 +2,13 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://dumphex.github.io/2020/03/01/syscall/</loc>
+    
+    <lastmod>2020-03-01T07:09:05.682Z</lastmod>
+    
+  </url>
+  
+  <url>
     <loc>https://dumphex.github.io/2020/02/25/segment_fault/</loc>
     
     <lastmod>2020-02-25T06:14:06.257Z</lastmod>

@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"dumphex.github.io","root":"/","scheme":"Gemini","version":"7.7.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文以mmap系统调用为例，描述它在用户态和内核态的执行过程。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="syscall">
+<meta property="og:url" content="https://dumphex.github.io/2020/03/01/syscall/index.html">
+<meta property="og:site_name" content="程序员自我修养">
+<meta property="og:description" content="本文以mmap系统调用为例，描述它在用户态和内核态的执行过程。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+<meta property="article:published_time" content="2020-03-01T06:59:55.000Z">
+<meta property="article:modified_time" content="2020-03-01T07:09:05.682Z">
+<meta property="article:author" content="dumphex">
+<meta property="article:tag" content="arm64">
+<meta property="article:tag" content="kernel">
+<meta property="article:tag" content="syscall">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+
+<link rel="canonical" href="https://dumphex.github.io/2020/03/01/syscall/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true
+  };
+</script>
+
+  <title>syscall | 程序员自我修养</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">程序员自我修养</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-sitemap">
+
+    <a href="/sitemap.xml" rel="section"><i class="fa fa-fw fa-sitemap"></i>站点地图</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+
+</nav>
+  <div class="site-search">
+    <div class="popup search-popup">
+    <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocorrect="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result"></div>
+
+</div>
+<div class="search-pop-overlay"></div>
+
+  </div>
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://dumphex.github.io/2020/03/01/syscall/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="dumphex">
+      <meta itemprop="description" content="专注于Linux/Android/C/C++等">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="程序员自我修养">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          syscall
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-03-01 14:59:55 / 修改时间：15:09:05" itemprop="dateCreated datePublished" datetime="2020-03-01T14:59:55+08:00">2020-03-01</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Linux/" itemprop="url" rel="index">
+                    <span itemprop="name">Linux</span>
+                  </a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文以mmap系统调用为例，描述它在用户态和内核态的执行过程。</p>
+<a id="more"></a>
+
+<h1 id="1-系统环境"><a href="#1-系统环境" class="headerlink" title="1. 系统环境"></a>1. 系统环境</h1><ul>
+<li>Linux + arm64</li>
+<li>kernel 4.9</li>
+<li>glibc 2.17</li>
+</ul>
+<h1 id="2-系统调用执行过程"><a href="#2-系统调用执行过程" class="headerlink" title="2. 系统调用执行过程"></a>2. 系统调用执行过程</h1><h2 id="2-1-用户态"><a href="#2-1-用户态" class="headerlink" title="2.1 用户态"></a>2.1 用户态</h2><h3 id="2-1-1-mmap的实现"><a href="#2-1-1-mmap的实现" class="headerlink" title="2.1.1 mmap的实现"></a>2.1.1 mmap的实现</h3><blockquote>
+<p>源文件: glibc/ports/sysdeps/unix/sysv/linux/aarch64/mmap.c</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">__ptr_t</span></span><br><span class="line">__mmap (<span class="keyword">__ptr_t</span> addr, <span class="keyword">size_t</span> len, <span class="keyword">int</span> prot, <span class="keyword">int</span> flags, <span class="keyword">int</span> fd, <span class="keyword">off_t</span> offset)</span><br><span class="line">&#123;</span><br><span class="line">  <span class="keyword">return</span> (<span class="keyword">__ptr_t</span>) INLINE_SYSCALL (mmap, <span class="number">6</span>, addr, len, prot, flags, fd, offset);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">weak_alias (__mmap, mmap)</span><br><span class="line">weak_alias (__mmap, mmap64)</span><br><span class="line">weak_alias (__mmap, __mmap64)</span><br></pre></td></tr></table></figure>
+
+<p><strong>INLINE_SYSCALL</strong>的实现如下</p>
+<blockquote>
+<p>源文件: glibc/ports/sysdeps/unix/sysv/linux/aarch64/sysdep.h</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Define a macro which expands into the inline wrapper code for a system</span></span><br><span class="line"><span class="comment">   call.  */</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">undef</span> INLINE_SYSCALL</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> INLINE_SYSCALL(name, nr, args...)                                \</span></span><br><span class="line">  (&#123; <span class="keyword">unsigned</span> <span class="keyword">long</span> _sys_result = INTERNAL_SYSCALL (name, , nr, args);        \</span><br><span class="line">     <span class="keyword">if</span> (__builtin_expect (INTERNAL_SYSCALL_ERROR_P (_sys_result, ), <span class="number">0</span>))\</span><br><span class="line">       &#123;                                                                \</span><br><span class="line">         __set_errno (INTERNAL_SYSCALL_ERRNO (_sys_result, ));                \</span><br><span class="line">         _sys_result = (<span class="keyword">unsigned</span> <span class="keyword">long</span>) <span class="number">-1</span>;                                \</span><br><span class="line">       &#125;                                                                \</span><br><span class="line">     (<span class="keyword">long</span>) _sys_result; &#125;)</span><br></pre></td></tr></table></figure>
+
+<p>流程如下:</p>
+<ul>
+<li>调用INTERNAL_SYSCALL执行系统调用</li>
+<li>判断返回值_sys_result<ul>
+<li>若为0，则直接返回</li>
+<li>若不为0，则将返回值_sys_result<strong>取负</strong>设置到<strong>errno</strong>, 返回-1</li>
+</ul>
+</li>
+</ul>
+<p><strong>INTERNAL_SYSCALL</strong>的实现如下</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">undef</span> INTERNAL_SYSCALL</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> INTERNAL_SYSCALL(name, err, nr, args...)               \</span></span><br><span class="line">        INTERNAL_SYSCALL_RAW(SYS_ify(name), err, nr, args)</span><br></pre></td></tr></table></figure>
+
+<p><strong>SYS_ify</strong>是个宏，用于将syscall name转换为syscall number</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* For Linux we can use the system call table in the header file</span></span><br><span class="line"><span class="comment">        /usr/include/asm/unistd.h</span></span><br><span class="line"><span class="comment">   of the kernel.  But these symbols do not follow the SYS_* syntax</span></span><br><span class="line"><span class="comment">   so we have to redefine the `SYS_ify' macro here.  */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> SYS_ify</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SYS_ify(syscall_name)        (__NR_##syscall_name)</span></span><br></pre></td></tr></table></figure>
+<p>这里将mmap转换成了__NR_mmap</p>
+<p>再看<strong>INTERNAL_SYSCALL_RAW</strong>的实现</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">undef</span> INTERNAL_SYSCALL_RAW</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> INTERNAL_SYSCALL_RAW(name, err, nr, args...)           \</span></span><br><span class="line">  (&#123; <span class="keyword">long</span> _sys_result;                                          \</span><br><span class="line">     &#123;                                                          \</span><br><span class="line">       LOAD_ARGS_##nr (args)                                    \</span><br><span class="line">       <span class="keyword">register</span> <span class="keyword">long</span> _x8 <span class="keyword">asm</span> (<span class="string">"x8"</span>) = (name);                   \</span><br><span class="line">       <span class="keyword">asm</span> <span class="keyword">volatile</span> (<span class="string">"svc       0       // syscall "</span> # name     \</span><br><span class="line">                     : <span class="string">"=r"</span> (_x0) : <span class="string">"r"</span>(_x8) ASM_ARGS_##nr : <span class="string">"memory"</span>); \</span><br><span class="line">       _sys_result = _x0;                                       \</span><br><span class="line">     &#125;                                                          \</span><br><span class="line">     _sys_result; &#125;)</span><br></pre></td></tr></table></figure>
+<p>nr为mmap的参数个数，这里为6。</p>
+<p>LOAD_ARGS_##nr对应LOAD_ARGS_6, 这个宏用于将所有的32bit参数转换为64bit， 并将相应的参数保存到_x0/_x1/_x2/_x3/_x4/_x5中</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_0()                          \</span></span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x0 <span class="title">asm</span> <span class="params">(<span class="string">"x0"</span>)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_0</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_1(x0)                        \</span></span><br><span class="line">  <span class="keyword">long</span> _x0tmp = (<span class="keyword">long</span>) (x0);                    \</span><br><span class="line">  LOAD_ARGS_0 ()                                \</span><br><span class="line">  _x0 = _x0tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_1     <span class="meta-string">"r"</span> (_x0)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_2(x0, x1)                    \</span></span><br><span class="line">  <span class="keyword">long</span> _x1tmp = (<span class="keyword">long</span>) (x1);                    \</span><br><span class="line">  LOAD_ARGS_1 (x0)                              \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x1 <span class="title">asm</span> <span class="params">(<span class="string">"x1"</span>)</span> </span>= _x1tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_2     ASM_ARGS_1, <span class="meta-string">"r"</span> (_x1)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_3(x0, x1, x2)                \</span></span><br><span class="line">  <span class="keyword">long</span> _x2tmp = (<span class="keyword">long</span>) (x2);                    \</span><br><span class="line">  LOAD_ARGS_2 (x0, x1)                          \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x2 <span class="title">asm</span> <span class="params">(<span class="string">"x2"</span>)</span> </span>= _x2tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_3     ASM_ARGS_2, <span class="meta-string">"r"</span> (_x2)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_4(x0, x1, x2, x3)            \</span></span><br><span class="line">  <span class="keyword">long</span> _x3tmp = (<span class="keyword">long</span>) (x3);                    \</span><br><span class="line">  LOAD_ARGS_3 (x0, x1, x2)                      \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x3 <span class="title">asm</span> <span class="params">(<span class="string">"x3"</span>)</span> </span>= _x3tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_4     ASM_ARGS_3, <span class="meta-string">"r"</span> (_x3)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_5(x0, x1, x2, x3, x4)        \</span></span><br><span class="line">  <span class="keyword">long</span> _x4tmp = (<span class="keyword">long</span>) (x4);                    \</span><br><span class="line">  LOAD_ARGS_4 (x0, x1, x2, x3)                  \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x4 <span class="title">asm</span> <span class="params">(<span class="string">"x4"</span>)</span> </span>= _x4tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_5     ASM_ARGS_4, <span class="meta-string">"r"</span> (_x4)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_6(x0, x1, x2, x3, x4, x5)    \</span></span><br><span class="line">  <span class="keyword">long</span> _x5tmp = (<span class="keyword">long</span>) (x5);                    \</span><br><span class="line">  LOAD_ARGS_5 (x0, x1, x2, x3, x4)              \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x5 <span class="title">asm</span> <span class="params">(<span class="string">"x5"</span>)</span> </span>= _x5tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_6     ASM_ARGS_5, <span class="meta-string">"r"</span> (_x5)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_7(x0, x1, x2, x3, x4, x5, x6)\</span></span><br><span class="line">  <span class="keyword">long</span> _x6tmp = (<span class="keyword">long</span>) (x6);                    \</span><br><span class="line">  LOAD_ARGS_6 (x0, x1, x2, x3, x4, x5)          \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x6 <span class="title">asm</span> <span class="params">(<span class="string">"x6"</span>)</span> </span>= _x6tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_7     ASM_ARGS_6, <span class="meta-string">"r"</span> (_x6)</span></span><br></pre></td></tr></table></figure>
+
+<p>ASM_ARGS_##nr对应ASM_ARGS_6, 用于将x0~x5这6个寄存器作为内联汇编的输入寄存器列表</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_1     <span class="meta-string">"r"</span> (_x0)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_2(x0, x1)                    \</span></span><br><span class="line">  <span class="keyword">long</span> _x1tmp = (<span class="keyword">long</span>) (x1);                    \</span><br><span class="line">  LOAD_ARGS_1 (x0)                              \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x1 <span class="title">asm</span> <span class="params">(<span class="string">"x1"</span>)</span> </span>= _x1tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_2     ASM_ARGS_1, <span class="meta-string">"r"</span> (_x1)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_3(x0, x1, x2)                \</span></span><br><span class="line">  <span class="keyword">long</span> _x2tmp = (<span class="keyword">long</span>) (x2);                    \</span><br><span class="line">  LOAD_ARGS_2 (x0, x1)                          \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x2 <span class="title">asm</span> <span class="params">(<span class="string">"x2"</span>)</span> </span>= _x2tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_3     ASM_ARGS_2, <span class="meta-string">"r"</span> (_x2)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_4(x0, x1, x2, x3)            \</span></span><br><span class="line">  <span class="keyword">long</span> _x3tmp = (<span class="keyword">long</span>) (x3);                    \</span><br><span class="line">  LOAD_ARGS_3 (x0, x1, x2)                      \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x3 <span class="title">asm</span> <span class="params">(<span class="string">"x3"</span>)</span> </span>= _x3tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_4     ASM_ARGS_3, <span class="meta-string">"r"</span> (_x3)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_5(x0, x1, x2, x3, x4)        \</span></span><br><span class="line">  <span class="keyword">long</span> _x4tmp = (<span class="keyword">long</span>) (x4);                    \</span><br><span class="line">  LOAD_ARGS_4 (x0, x1, x2, x3)                  \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x4 <span class="title">asm</span> <span class="params">(<span class="string">"x4"</span>)</span> </span>= _x4tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_5     ASM_ARGS_4, <span class="meta-string">"r"</span> (_x4)</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> LOAD_ARGS_6(x0, x1, x2, x3, x4, x5)    \</span></span><br><span class="line">  <span class="keyword">long</span> _x5tmp = (<span class="keyword">long</span>) (x5);                    \</span><br><span class="line">  LOAD_ARGS_5 (x0, x1, x2, x3, x4)              \</span><br><span class="line">  <span class="function"><span class="keyword">register</span> <span class="keyword">long</span> _x5 <span class="title">asm</span> <span class="params">(<span class="string">"x5"</span>)</span> </span>= _x5tmp;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> ASM_ARGS_6     ASM_ARGS_5, <span class="meta-string">"r"</span> (_x5)</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="2-1-2-syscall-number"><a href="#2-1-2-syscall-number" class="headerlink" title="2.1.2 syscall number"></a>2.1.2 syscall number</h3><p>每一个系统调用，都有唯一的syscall number</p>
+<p>下面看一下__NR_mmap在arm64上是怎么定义的</p>
+<blockquote>
+<p>源文件: gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/aarch64-linux-gnu/libc/usr/include/asm-generic/unistd.h</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> __NR_mmap __NR3264_mmap</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> __NR3264_mmap 222</span></span><br></pre></td></tr></table></figure>
+
+<p>也就是，mmap在arm64平台上的syscall number是222</p>
+<h3 id="2-1-3-反汇编mmap"><a href="#2-1-3-反汇编mmap" class="headerlink" title="2.1.3 反汇编mmap"></a>2.1.3 反汇编mmap</h3><p>反汇编libc.so的mmap:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">00000000000c4908 &lt;mmap@@GLIBC_2.17&gt;:</span><br><span class="line">   c4908:       93407c42        sxtw    x2, w2 </span><br><span class="line">   c490c:       93407c63        sxtw    x3, w3 </span><br><span class="line">   c4910:       93407c84        sxtw    x4, w4 </span><br><span class="line">   c4914:       d2801bc8        mov     x8, #0xde                       &#x2F;&#x2F; #222</span><br><span class="line">   c4918:       d4000001        svc     #0x0   </span><br><span class="line">   c491c:       b140041f        cmn     x0, #0x1, lsl #12</span><br><span class="line">   c4920:       54000048        b.hi    c4928 &lt;mmap@@GLIBC_2.17+0x20&gt;  &#x2F;&#x2F; b.pmore</span><br><span class="line">   c4924:       d65f03c0        ret    </span><br><span class="line">   c4928:       f00003e1        adrp    x1, 143000 &lt;sys_sigabbrev@@GLIBC_2.17+0x240&gt;</span><br><span class="line">   c492c:       f9472021        ldr     x1, [x1, #3648] </span><br><span class="line">   c4930:       d53bd042        mrs     x2, tpidr_el0</span><br><span class="line">   c4934:       4b0003e3        neg     w3, w0 </span><br><span class="line">   c4938:       92800000        mov     x0, #0xffffffffffffffff         &#x2F;&#x2F; #-1</span><br><span class="line">   c493c:       b8216843        str     w3, [x2, x1]</span><br><span class="line">   c4940:       d65f03c0        ret</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><p>将第3、4、5个参数， 由32bit扩展为64bit</p>
+<p>mmap系统调用的原型如下</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/mman.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> *<span class="title">mmap</span><span class="params">(<span class="keyword">void</span> *addr, <span class="keyword">size_t</span> length, <span class="keyword">int</span> prot, <span class="keyword">int</span> flags,</span></span></span><br><span class="line"><span class="function"><span class="params">           <span class="keyword">int</span> fd, <span class="keyword">off_t</span> offset)</span></span>;</span><br></pre></td></tr></table></figure>
+<p>可看到，prot/flags/fd是32bit的</p>
+</li>
+<li><p>syscall number存储到了x8寄存器</p>
+</li>
+<li><p>最后svc 0触发进入内核态</p>
+<blockquote>
+<p>Supervisor Call causes an exception to be taken to EL1.<br> On executing an SVC instruction, the PE records the exception as a Supervisor Call exception in ESR_ELx, using the<br> EC value 0x15 , and the value of the immediate argument.</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="2-2-内核态"><a href="#2-2-内核态" class="headerlink" title="2.2 内核态"></a>2.2 内核态</h2><h3 id="2-2-1-异常向量表"><a href="#2-2-1-异常向量表" class="headerlink" title="2.2.1 异常向量表"></a>2.2.1 异常向量表</h3><p>系统调用切换到内核态后， 首先会进入异常向量表处理。</p>
+<blockquote>
+<p>源文件: kernel/arch/arm64/kernel/entry.S</p>
+</blockquote>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * Exception vectors.</span><br><span class="line"> *&#x2F;</span><br><span class="line">        .pushsection &quot;.entry.text&quot;, &quot;ax&quot;</span><br><span class="line"></span><br><span class="line">        .align  11  </span><br><span class="line">ENTRY(vectors)</span><br><span class="line">        ventry  el1_sync_invalid                &#x2F;&#x2F; Synchronous EL1t</span><br><span class="line">        ventry  el1_irq_invalid                 &#x2F;&#x2F; IRQ EL1t</span><br><span class="line">        ventry  el1_fiq_invalid                 &#x2F;&#x2F; FIQ EL1t</span><br><span class="line">        ventry  el1_error_invalid               &#x2F;&#x2F; Error EL1t</span><br><span class="line"></span><br><span class="line">        ventry  el1_sync                        &#x2F;&#x2F; Synchronous EL1h</span><br><span class="line">        ventry  el1_irq                         &#x2F;&#x2F; IRQ EL1h</span><br><span class="line">        ventry  el1_fiq_invalid                 &#x2F;&#x2F; FIQ EL1h</span><br><span class="line">        ventry  el1_error_invalid               &#x2F;&#x2F; Error EL1h</span><br><span class="line"></span><br><span class="line">        ventry  el0_sync                        &#x2F;&#x2F; Synchronous 64-bit EL0</span><br><span class="line">        ventry  el0_irq                         &#x2F;&#x2F; IRQ 64-bit EL0</span><br><span class="line">        ventry  el0_fiq_invalid                 &#x2F;&#x2F; FIQ 64-bit EL0</span><br><span class="line">        ventry  el0_error_invalid               &#x2F;&#x2F; Error 64-bit EL0</span><br><span class="line"></span><br><span class="line">#ifdef CONFIG_COMPAT</span><br><span class="line">        ventry  el0_sync_compat                 &#x2F;&#x2F; Synchronous 32-bit EL0</span><br><span class="line">        ventry  el0_irq_compat                  &#x2F;&#x2F; IRQ 32-bit EL0</span><br><span class="line">        ventry  el0_fiq_invalid_compat          &#x2F;&#x2F; FIQ 32-bit EL0</span><br><span class="line">        ventry  el0_error_invalid_compat        &#x2F;&#x2F; Error 32-bit EL0</span><br><span class="line">#else</span><br><span class="line">        ventry  el0_sync_invalid                &#x2F;&#x2F; Synchronous 32-bit EL0</span><br><span class="line">        ventry  el0_irq_invalid                 &#x2F;&#x2F; IRQ 32-bit EL0</span><br><span class="line">        ventry  el0_fiq_invalid                 &#x2F;&#x2F; FIQ 32-bit EL0</span><br><span class="line">        ventry  el0_error_invalid               &#x2F;&#x2F; Error 32-bit EL0</span><br><span class="line">#endif</span><br><span class="line">END(vectors)</span><br></pre></td></tr></table></figure>
+
+<p>用户态的系统调用会在<strong>el0_sync</strong>处理</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * EL0 mode handlers.</span><br><span class="line"> *&#x2F;</span><br><span class="line">        .align  6</span><br><span class="line">el0_sync:</span><br><span class="line">        kernel_entry 0</span><br><span class="line">        mrs     x25, esr_el1                    &#x2F;&#x2F; read the syndrome register</span><br><span class="line">        lsr     x24, x25, #ESR_ELx_EC_SHIFT     &#x2F;&#x2F; exception class</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_SVC64          &#x2F;&#x2F; SVC in 64-bit state</span><br><span class="line">        b.eq    el0_svc</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_DABT_LOW       &#x2F;&#x2F; data abort in EL0</span><br><span class="line">        b.eq    el0_da</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_IABT_LOW       &#x2F;&#x2F; instruction abort in EL0</span><br><span class="line">        b.eq    el0_ia</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_FP_ASIMD       &#x2F;&#x2F; FP&#x2F;ASIMD access</span><br><span class="line">        b.eq    el0_fpsimd_acc</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_FP_EXC64       &#x2F;&#x2F; FP&#x2F;ASIMD exception</span><br><span class="line">        b.eq    el0_fpsimd_exc</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_SYS64          &#x2F;&#x2F; configurable trap</span><br><span class="line">        b.eq    el0_sys</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_SP_ALIGN       &#x2F;&#x2F; stack alignment exception</span><br><span class="line">        b.eq    el0_sp_pc</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_PC_ALIGN       &#x2F;&#x2F; pc alignment exception</span><br><span class="line">        b.eq    el0_sp_pc</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_UNKNOWN        &#x2F;&#x2F; unknown exception in EL0</span><br><span class="line">        b.eq    el0_undef</span><br><span class="line">        cmp     x24, #ESR_ELx_EC_BREAKPT_LOW    &#x2F;&#x2F; debug exception in EL0</span><br><span class="line">        b.ge    el0_dbg</span><br><span class="line">        b       el0_inv</span><br></pre></td></tr></table></figure>
+
+<p>kernel_entry 0用于保存用户态寄存器信息(x0~x30/sp/pc/spsr等)到内核栈。</p>
+<p>根据异常类型，</p>
+<blockquote>
+<p>EC == 010101<br>SVC instruction execution in AArch64 state.</p>
+</blockquote>
+<p>这里是ESR_ELx_EC_SVC64, </p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ESR_ELx_EC_SVC64        (0x15)</span></span><br></pre></td></tr></table></figure>
+
+<p>将会跳转到<strong>el0_svc</strong>处理</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;*</span><br><span class="line"> * SVC handler.</span><br><span class="line"> *&#x2F;</span><br><span class="line">        .align  6</span><br><span class="line">el0_svc:</span><br><span class="line">        adrp    stbl, sys_call_table            &#x2F;&#x2F; load syscall table pointer</span><br><span class="line">        uxtw    scno, w8                        &#x2F;&#x2F; syscall number in w8</span><br><span class="line">        mov     sc_nr, #__NR_syscalls</span><br><span class="line">el0_svc_naked:                                  &#x2F;&#x2F; compat entry point</span><br><span class="line">        stp     x0, scno, [sp, #S_ORIG_X0]      &#x2F;&#x2F; save the original x0 and syscall number</span><br><span class="line">        enable_dbg_and_irq</span><br><span class="line">        ct_user_exit 1</span><br><span class="line"></span><br><span class="line">        ldr     x16, [tsk, #TI_FLAGS]           &#x2F;&#x2F; check for syscall hooks</span><br><span class="line">        tst     x16, #_TIF_SYSCALL_WORK</span><br><span class="line">        b.ne    __sys_trace</span><br><span class="line">        cmp     scno, sc_nr                     &#x2F;&#x2F; check upper syscall limit</span><br><span class="line">        b.hs    ni_sys</span><br><span class="line">        ldr     x16, [stbl, scno, lsl #3]       &#x2F;&#x2F; address in the syscall table</span><br><span class="line">        blr     x16                             &#x2F;&#x2F; call sys_* routine</span><br><span class="line">        b       ret_fast_syscall</span><br><span class="line">ni_sys:</span><br><span class="line">        mov     x0, sp</span><br><span class="line">        bl      do_ni_syscall</span><br><span class="line">        b       ret_fast_syscall</span><br><span class="line">ENDPROC(el0_svc)</span><br></pre></td></tr></table></figure>
+
+<p>el0_svc流程如下</p>
+<ul>
+<li><p>从<strong>w8</strong>中取出32bit的syscall number，扩展到64bit的<strong>scno</strong>，并保存到内核栈</p>
+<blockquote>
+<p>PS: 感觉这里没有用， 用户态将syscall number保存到了x8, 直接使用x8即可。 这里这么实现， 可能是仿照arm的el0_svc_compat做的， 因为arm是使用w7。kernel 5.5.6的arm64已经直接使用regs-&gt;regs[8]作syscall number了)</p>
+</blockquote>
+</li>
+<li><p>根据<strong>sys_call_table/scno</strong>，获取系统调用对应的kernel实现函数<strong>x16</strong>，最后跳转执行</p>
+</li>
+<li><p>系统调用执行完后，从ret_fast_syscall-&gt;kernel_exit 0返回到用户态</p>
+</li>
+</ul>
+<h3 id="2-2-2-系统调用表"><a href="#2-2-2-系统调用表" class="headerlink" title="2.2.2 系统调用表"></a>2.2.2 系统调用表</h3><blockquote>
+<p>源文件: kernel/arch/arm64/kernel/sys.c</p>
+</blockquote>
+<p>sys_call_table[]的定义如下</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * The sys_call_table array must be 4K aligned to be accessible from</span></span><br><span class="line"><span class="comment"> * kernel/entry.S.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">void</span> * <span class="keyword">const</span> sys_call_table[__NR_syscalls] __aligned(<span class="number">4096</span>) = &#123;</span><br><span class="line">        [<span class="number">0</span> ... __NR_syscalls - <span class="number">1</span>] = sys_ni_syscall,</span><br><span class="line">#include &lt;<span class="keyword">asm</span>/unistd.h&gt;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>这里#include的asm/unistd.h， 最终是include/uapi/asm-generic/unistd.h</p>
+<blockquote>
+<p>源文件: kernel/include/uapi/asm-generic/unistd.h</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> __NR3264_mmap 222</span></span><br><span class="line">__SC_3264(__NR3264_mmap, sys_mmap2, sys_mmap)</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> __NR_mmap __NR3264_mmap</span></span><br></pre></td></tr></table></figure>
+
+<p>__SC_3264是个宏，实现如下</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">if</span> __BITS_PER_LONG == 32 || defined(__SYSCALL_COMPAT)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> __SC_3264(_nr, _32, _64) __SYSCALL(_nr, _32)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> __SC_3264(_nr, _32, _64) __SYSCALL(_nr, _64)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+
+<p>而__SYSCALL的宏定义如下</p>
+<blockquote>
+<p>源文件: kernel/arch/arm64/kernel/sys.c</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">undef</span> __SYSCALL</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> __SYSCALL(nr, sym)      [nr] = sym,</span></span><br></pre></td></tr></table></figure>
+
+<p>也就是， __SC_3264宏会将系统调用赋值到全局数组sys_call_table[]中，每个系统调用的syscall number就是数组下标。</p>
+<p>32bit的mmap对应</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[<span class="number">222</span>] = sys_mmap2,</span><br></pre></td></tr></table></figure>
+
+<p>64bit的mmap对应</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[<span class="number">222</span>] = sys_mmap,</span><br></pre></td></tr></table></figure>
+
+<p>最后看下sys_call_table的内容</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">crash&gt; p sys_call_table</span><br><span class="line">sys_call_table &#x3D; $1 &#x3D; </span><br><span class="line"> &#123;0xffffff800821f198 &lt;SyS_io_setup&gt;, 0xffffff800821fbd8 &lt;SyS_io_destroy&gt;, 0xffffff8008220390 &lt;SyS_io_submit&gt;, 0xffffff80082203a8 &lt;SyS_io_cancel&gt;, 0xffffff8008220520 &lt;SyS_io_getevents&gt;, 0xffffff80081fb2e8 &lt;SyS_setxattr&gt;, 0xffffff80081fb308 &lt;SyS_lsetxattr&gt;, 0xffffff80081fb328 &lt;SyS_fsetxattr&gt;, 0xffffff80081fb3d8 &lt;SyS_getxattr&gt;, 0xffffff80081fb3f0 &lt;SyS_lgetxattr&gt;, 0xffffff80081fb408 &lt;SyS_fgetxattr&gt;, 0xffffff80081fb480 &lt;SyS_listxattr&gt;, 0xffffff80081fb498 &lt;SyS_llistxattr&gt;, 0xffffff80081fb4b0 &lt;SyS_flistxattr&gt;, 0xffffff80081fb518 &lt;SyS_removexattr&gt;, 0xffffff80081fb538 &lt;SyS_lremovexattr&gt;, 0xffffff80081fb558 &lt;SyS_fremovexattr&gt;, 0xffffff80081edcd0 &lt;SyS_getcwd&gt;, 0xffffff8008248de8 &lt;SyS_lookup_dcookie&gt;, 0xffffff800821d970 &lt;SyS_eventfd2&gt;, 0xffffff800821a550 &lt;SyS_epoll_create1&gt;, 0xffffff800821a6f0 &lt;SyS_epoll_ctl&gt;, 0xffffff800821b3f0 &lt;SyS_epoll_pwait&gt;, 0xffffff80081f2d38 &lt;SyS_dup&gt;, 0xffffff80081f2bc8 &lt;SyS_dup3&gt;, 0xffffff80081e5af8 &lt;SyS_fcntl&gt;, 0xffffff8008218ff8 &lt;SyS_inotify_init1&gt;, 0xffffff8008219180 &lt;SyS_inotify_add_watch&gt;, 0xffffff80082194c8 &lt;SyS_inotify_rm_watch&gt;, 0xffffff80081e72c0 &lt;SyS_ioctl&gt;, 0xffffff80083ef120 &lt;SyS_ioprio_set&gt;, 0xffffff80083ef3f8 &lt;SyS_ioprio_get&gt;, 0xffffff8008224930 &lt;SyS_flock&gt;, 0xffffff80081e49e0 &lt;SyS_mknodat&gt;, 0xffffff80081e4bf8 &lt;SyS_mkdirat&gt;, 0xffffff80081e4d20 &lt;SyS_unlinkat&gt;, 0xffffff80081e4d78 &lt;SyS_symlinkat&gt;, 0xffffff80081e4e70 &lt;SyS_linkat&gt;, 0xffffff80081e5608 &lt;SyS_renameat&gt;, 0xffffff80081f5d08 &lt;SyS_umount&gt;, 0xffffff80081f7ce8 &lt;SyS_mount&gt;, 0xffffff80081f7eb0 &lt;SyS_pivot_root&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80082087f8 &lt;SyS_statfs&gt;, 0xffffff8008208890 &lt;SyS_fstatfs&gt;, 0xffffff80081d22a8 &lt;SyS_truncate&gt;, 0xffffff80081d22d8 &lt;SyS_ftruncate&gt;, 0xffffff80081d2308 &lt;SyS_fallocate&gt;, 0xffffff80081d2398 &lt;SyS_faccessat&gt;, 0xffffff80081d25c8 &lt;SyS_chdir&gt;, 0xffffff80081d2688 &lt;SyS_fchdir&gt;, 0xffffff80081d2720 &lt;SyS_chroot&gt;, 0xffffff80081d2808 &lt;SyS_fchmod&gt;, 0xffffff80081d2880 &lt;SyS_fchmodat&gt;, 0xffffff80081d2948 &lt;SyS_fchownat&gt;, 0xffffff80081d2ac0 &lt;SyS_fchown&gt;, 0xffffff80081d30e8 &lt;SyS_openat&gt;, 0xffffff80081d1b58 &lt;SyS_close&gt;, 0xffffff80081d3128 &lt;sys_vhangup&gt;, 0xffffff80081ddda8 &lt;SyS_pipe2&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80081e7908 &lt;SyS_getdents64&gt;, 0xffffff80081d4070 &lt;SyS_lseek&gt;, 0xffffff80081d5660 &lt;SyS_read&gt;, 0xffffff80081d5700 &lt;SyS_write&gt;, 0xffffff80081d5a60 &lt;SyS_readv&gt;, 0xffffff80081d5a78 &lt;SyS_writev&gt;, 0xffffff80081d57a0 &lt;SyS_pread64&gt;, 0xffffff80081d5838 &lt;SyS_pwrite64&gt;, 0xffffff80081d5a90 &lt;SyS_preadv&gt;, 0xffffff80081d5ad8 &lt;SyS_pwritev&gt;, 0xffffff80081d5cc8 &lt;SyS_sendfile64&gt;, 0xffffff80081e8990 &lt;SyS_pselect6&gt;, 0xffffff80081e9178 &lt;SyS_ppoll&gt;, 0xffffff800821be68 &lt;SyS_signalfd4&gt;, 0xffffff8008206938 &lt;SyS_vmsplice&gt;, 0xffffff8008206bb8 &lt;SyS_splice&gt;, 0xffffff80082071b0 &lt;SyS_tee&gt;, 0xffffff80081d9cb0 &lt;SyS_readlinkat&gt;, 0xffffff80081d9c40 &lt;SyS_newfstatat&gt;, 0xffffff80081d9c78 &lt;SyS_newfstat&gt;, 0xffffff8008207800 &lt;sys_sync&gt;, 0xffffff8008207980 &lt;SyS_fsync&gt;, 0xffffff80082079a0 &lt;SyS_fdatasync&gt;, 0xffffff80082079c0 &lt;SyS_sync_file_range&gt;, 0xffffff800821cc70 &lt;SyS_timerfd_create&gt;, 0xffffff800821ce28 &lt;SyS_timerfd_settime&gt;, 0xffffff800821cee8 &lt;SyS_timerfd_gettime&gt;, 0xffffff8008207e08 &lt;SyS_utimensat&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080a75e0 &lt;SyS_capget&gt;, 0xffffff80080a7780 &lt;SyS_capset&gt;, 0xffffff8008088380 &lt;SyS_arm64_personality&gt;, 0xffffff80080a2110 &lt;SyS_exit&gt;, 0xffffff80080a21c0 &lt;SyS_exit_group&gt;, 0xffffff80080a21f8 &lt;SyS_waitid&gt;, 0xffffff800809c190 &lt;SyS_set_tid_address&gt;, 0xffffff800809c698 &lt;SyS_unshare&gt;, 0xffffff8008113850 &lt;SyS_futex&gt;, 0xffffff8008112988 &lt;SyS_set_robust_list&gt;, 0xffffff80081129c0 &lt;SyS_get_robust_list&gt;, 0xffffff80081010e0 &lt;SyS_nanosleep&gt;, 0xffffff80081017e8 &lt;SyS_getitimer&gt;, 0xffffff8008101bf0 &lt;SyS_setitimer&gt;, 0xffffff800811d658 &lt;SyS_kexec_load&gt;, 0xffffff800811ab30 &lt;SyS_init_module&gt;, 0xffffff80081182a0 &lt;SyS_delete_module&gt;, 0xffffff8008102680 &lt;SyS_timer_create&gt;, 0xffffff8008102b50 &lt;SyS_timer_gettime&gt;, 0xffffff8008102c80 &lt;SyS_timer_getoverrun&gt;, 0xffffff8008102cc0 &lt;SyS_timer_settime&gt;, 0xffffff8008102ec8 &lt;SyS_timer_delete&gt;, 0xffffff8008103198 &lt;SyS_clock_settime&gt;, 0xffffff8008103268 &lt;SyS_clock_gettime&gt;, 0xffffff8008103468 &lt;SyS_clock_getres&gt;, 0xffffff8008103550 &lt;SyS_clock_nanosleep&gt;, 0xffffff80080e9b20 &lt;SyS_syslog&gt;, 0xffffff80080a8d08 &lt;SyS_ptrace&gt;, 0xffffff80080c8d58 &lt;SyS_sched_setparam&gt;, 0xffffff80080c8d30 &lt;SyS_sched_setscheduler&gt;, 0xffffff80080c8fc0 &lt;SyS_sched_getscheduler&gt;, 0xffffff80080c9030 &lt;SyS_sched_getparam&gt;, 0xffffff80080c9430 &lt;SyS_sched_setaffinity&gt;, 0xffffff80080c9570 &lt;SyS_sched_getaffinity&gt;, 0xffffff80080c9628 &lt;sys_sched_yield&gt;, 0xffffff80080c9688 &lt;SyS_sched_get_priority_max&gt;, 0xffffff80080c96d0 &lt;SyS_sched_get_priority_min&gt;, 0xffffff80080c9718 &lt;SyS_sched_rr_get_interval&gt;, 0xffffff80080ad208 &lt;sys_restart_syscall&gt;, 0xffffff80080adcf0 &lt;SyS_kill&gt;, 0xffffff80080adeb8 &lt;SyS_tkill&gt;, 0xffffff80080ade88 &lt;SyS_tgkill&gt;, 0xffffff80080ae278 &lt;SyS_sigaltstack&gt;, 0xffffff80080aec70 &lt;SyS_rt_sigsuspend&gt;, 0xffffff80080ae6f0 &lt;SyS_rt_sigaction&gt;, 0xffffff80080ad480 &lt;SyS_rt_sigprocmask&gt;, 0xffffff80080ad578 &lt;SyS_rt_sigpending&gt;, 0xffffff80080adc00 &lt;SyS_rt_sigtimedwait&gt;, 0xffffff80080adef0 &lt;SyS_rt_sigqueueinfo&gt;, 0xffffff80080847d0 &lt;sys_rt_sigreturn_wrapper&gt;, 0xffffff80080af810 &lt;SyS_setpriority&gt;, 0xffffff80080afa38 &lt;SyS_getpriority&gt;, 0xffffff80080bf398 &lt;SyS_reboot&gt;, 0xffffff80080afc48 &lt;SyS_setregid&gt;, 0xffffff80080afda8 &lt;SyS_setgid&gt;, 0xffffff80080afe70 &lt;SyS_setreuid&gt;, 0xffffff80080b0048 &lt;SyS_setuid&gt;, 0xffffff80080b0158 &lt;SyS_setresuid&gt;, 0xffffff80080b0360 &lt;SyS_getresuid&gt;, 0xffffff80080b0480 &lt;SyS_setresgid&gt;, 0xffffff80080b0620 &lt;SyS_getresgid&gt;, 0xffffff80080b0730 &lt;SyS_setfsuid&gt;, 0xffffff80080b0828 &lt;SyS_setfsgid&gt;, 0xffffff80080b0a90 &lt;SyS_times&gt;, 0xffffff80080b0b08 &lt;SyS_setpgid&gt;, 0xffffff80080b0c90 &lt;SyS_getpgid&gt;, 0xffffff80080b0d10 &lt;SyS_getsid&gt;, 0xffffff80080b0d78 &lt;sys_setsid&gt;, 0xffffff80080c1498 &lt;SyS_getgroups&gt;, 0xffffff80080c15e0 &lt;SyS_setgroups&gt;, 0xffffff80080b0e68 &lt;SyS_newuname&gt;, 0xffffff80080b1020 &lt;SyS_sethostname&gt;, 0xffffff80080b11f8 &lt;SyS_setdomainname&gt;, 0xffffff80080b14f8 &lt;SyS_getrlimit&gt;, 0xffffff80080b1780 &lt;SyS_setrlimit&gt;, 0xffffff80080b1860 &lt;SyS_getrusage&gt;, 0xffffff80080b18f8 &lt;SyS_umask&gt;, 0xffffff80080b1928 &lt;SyS_prctl&gt;, 0xffffff80080b1cf0 &lt;SyS_getcpu&gt;, 0xffffff80080fc978 &lt;SyS_gettimeofday&gt;, 0xffffff80080fcb30 &lt;SyS_settimeofday&gt;, 0xffffff80080fcc50 &lt;SyS_adjtimex&gt;, 0xffffff80080b0908 &lt;sys_getpid&gt;, 0xffffff80080b0958 &lt;sys_getppid&gt;, 0xffffff80080b0980 &lt;sys_getuid&gt;, 0xffffff80080b09a8 &lt;sys_geteuid&gt;, 0xffffff80080b09d0 &lt;sys_getgid&gt;, 0xffffff80080b09f8 &lt;sys_getegid&gt;, 0xffffff80080b0930 &lt;sys_gettid&gt;, 0xffffff80080b1da8 &lt;SyS_sysinfo&gt;, 0xffffff80083a6ae0 &lt;SyS_mq_open&gt;, 0xffffff80083a6d00 &lt;SyS_mq_unlink&gt;, 0xffffff80083a6e30 &lt;SyS_mq_timedsend&gt;, 0xffffff80083a7120 &lt;SyS_mq_timedreceive&gt;, 0xffffff80083a7550 &lt;SyS_mq_notify&gt;, 0xffffff80083a7950 &lt;SyS_mq_getsetattr&gt;, 0xffffff80083a0670 &lt;SyS_msgget&gt;, 0xffffff80083a06a8 &lt;SyS_msgctl&gt;, 0xffffff80083a0e80 &lt;SyS_msgrcv&gt;, 0xffffff80083a0a90 &lt;SyS_msgsnd&gt;, 0xffffff80083a2ac0 &lt;SyS_semget&gt;, 0xffffff80083a2b18 &lt;SyS_semctl&gt;, 0xffffff80083a2dc0 &lt;SyS_semtimedop&gt;, 0xffffff80083a3a38 &lt;SyS_semop&gt;, 0xffffff80083a4eb8 &lt;SyS_shmget&gt;, 0xffffff80083a4ef8 &lt;SyS_shmctl&gt;, 0xffffff80083a55a0 &lt;SyS_shmat&gt;, 0xffffff80083a55c8 &lt;SyS_shmdt&gt;, 0xffffff8008637e90 &lt;SyS_socket&gt;, 0xffffff8008637f70 &lt;SyS_socketpair&gt;, 0xffffff80086381f8 &lt;SyS_bind&gt;, 0xffffff80086382a8 &lt;SyS_listen&gt;, 0xffffff80086384e0 &lt;SyS_accept&gt;, 0xffffff80086384f8 &lt;SyS_connect&gt;, 0xffffff80086385b0 &lt;SyS_getsockname&gt;, 0xffffff8008638660 &lt;SyS_getpeername&gt;, 0xffffff8008638710 &lt;SyS_sendto&gt;, 0xffffff8008638850 &lt;SyS_recvfrom&gt;, 0xffffff8008638988 &lt;SyS_setsockopt&gt;, 0xffffff8008638a58 &lt;SyS_getsockopt&gt;, 0xffffff8008638b08 &lt;SyS_shutdown&gt;, 0xffffff8008638c08 &lt;SyS_sendmsg&gt;, 0xffffff8008638e60 &lt;SyS_recvmsg&gt;, 0xffffff8008171878 &lt;SyS_readahead&gt;, 0xffffff800819ded8 &lt;SyS_brk&gt;, 0xffffff800819d228 &lt;SyS_munmap&gt;, 0xffffff80081a0470 &lt;SyS_mremap&gt;, 0xffffff80083ab868 &lt;SyS_add_key&gt;, 0xffffff80083aba50 &lt;SyS_request_key&gt;, 0xffffff80083ad218 &lt;SyS_keyctl&gt;, 0xffffff800809c678 &lt;SyS_clone&gt;, 0xffffff80081dc508 &lt;SyS_execve&gt;, 0xffffff8008088358 &lt;sys_mmap&gt;, 0xffffff80081a75c0 &lt;SyS_fadvise64_64&gt;, 0xffffff80081ae458 &lt;SyS_swapon&gt;, 0xffffff80081ade70 &lt;SyS_swapoff&gt;, 0xffffff800819f998 &lt;SyS_mprotect&gt;, 0xffffff80081a0898 &lt;SyS_msync&gt;, 0xffffff800819aad0 &lt;SyS_mlock&gt;, 0xffffff800819ab30 &lt;SyS_munlock&gt;, 0xffffff800819aba8 &lt;SyS_mlockall&gt;, 0xffffff800819ad00 &lt;sys_munlockall&gt;, 0xffffff80081996f8 &lt;SyS_mincore&gt;, 0xffffff80081a8138 &lt;SyS_madvise&gt;, 0xffffff800819ea08 &lt;SyS_remap_file_pages&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080adfd8 &lt;SyS_rt_tgsigqueueinfo&gt;, 0xffffff800815cc48 &lt;SyS_perf_event_open&gt;, 0xffffff8008638328 &lt;SyS_accept4&gt;, 0xffffff80086390b8 &lt;SyS_recvmmsg&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;, 0xffffff80080bd128 &lt;sys_ni_syscall&gt;...&#125;</span><br><span class="line"></span><br><span class="line">crash&gt; p sizeof(sys_call_table)&#x2F;sizeof(sys_call_table[0])</span><br><span class="line">$2 &#x3D; 291</span><br><span class="line"></span><br><span class="line">crash&gt; p sys_call_table[222]</span><br><span class="line">$3 &#x3D; (void * const) 0xffffff8008088358 &lt;sys_mmap&gt;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-2-3-sys-mmap实现"><a href="#2-2-3-sys-mmap实现" class="headerlink" title="2.2.3 sys_mmap实现"></a>2.2.3 sys_mmap实现</h3><blockquote>
+<p>源文件: kernel/arch/arm64/kernel/sys.c</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">asmlinkage <span class="keyword">long</span> <span class="title">sys_mmap</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">long</span> addr, <span class="keyword">unsigned</span> <span class="keyword">long</span> len,</span></span></span><br><span class="line"><span class="function"><span class="params">                         <span class="keyword">unsigned</span> <span class="keyword">long</span> prot, <span class="keyword">unsigned</span> <span class="keyword">long</span> flags,</span></span></span><br><span class="line"><span class="function"><span class="params">                         <span class="keyword">unsigned</span> <span class="keyword">long</span> fd, <span class="keyword">off_t</span> off)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">if</span> (offset_in_page(off) != <span class="number">0</span>)</span><br><span class="line">                <span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> sys_mmap_pgoff(addr, len, prot, flags, fd, off &gt;&gt; PAGE_SHIFT);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>kernel源码中搜索不到sys_mmap_pgoff()实现， 原因是kernel针对该函数用宏进行了封装。</p>
+<blockquote>
+<p>源文件: mm/mmap.c</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE6(mmap_pgoff, <span class="keyword">unsigned</span> <span class="keyword">long</span>, addr, <span class="keyword">unsigned</span> <span class="keyword">long</span>, len, </span><br><span class="line">                <span class="keyword">unsigned</span> <span class="keyword">long</span>, prot, <span class="keyword">unsigned</span> <span class="keyword">long</span>, flags,</span><br><span class="line">                <span class="keyword">unsigned</span> <span class="keyword">long</span>, fd, <span class="keyword">unsigned</span> <span class="keyword">long</span>, pgoff)</span><br><span class="line">&#123;</span><br><span class="line">    ... ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>SYSCALL_DEFINE6</strong>的实现如下</p>
+<blockquote>
+<p>源文件: include/linux/syscalls.h</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SYSCALL_DEFINE6(name, ...) SYSCALL_DEFINEx(6, _##name, __VA_ARGS__)</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SYSCALL_DEFINEx(x, sname, ...)                          \</span></span><br><span class="line">        SYSCALL_METADATA(sname, x, __VA_ARGS__)                 \</span><br><span class="line">        __SYSCALL_DEFINEx(x, sname, __VA_ARGS__)</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> __SYSCALL_DEFINEx(x, name, ...)                                 \</span></span><br><span class="line">        asmlinkage <span class="keyword">long</span> sys#<span class="meta">#name(__MAP(x,__SC_DECL,__VA_ARGS__))       \</span></span><br><span class="line">                __attribute__((alias(__stringify(SyS##name))));         \</span><br><span class="line">        <span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">long</span> SYSC#<span class="meta">#name(__MAP(x,__SC_DECL,__VA_ARGS__));  \</span></span><br><span class="line">        asmlinkage <span class="keyword">long</span> SyS#<span class="meta">#name(__MAP(x,__SC_LONG,__VA_ARGS__));      \</span></span><br><span class="line">        asmlinkage <span class="keyword">long</span> SyS#<span class="meta">#name(__MAP(x,__SC_LONG,__VA_ARGS__))       \</span></span><br><span class="line">        &#123;                                                               \</span><br><span class="line">                <span class="keyword">long</span> ret = SYSC##name(__MAP(x,__SC_CAST,__VA_ARGS__));  \</span><br><span class="line">                __MAP(x,__SC_TEST,__VA_ARGS__);                         \</span><br><span class="line">                __PROTECT(x, ret,__MAP(x,__SC_ARGS,__VA_ARGS__));       \</span><br><span class="line">                <span class="keyword">return</span> ret;                                             \</span><br><span class="line">        &#125;                                                               \</span><br><span class="line">        <span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">long</span> SYSC#<span class="meta">#name(__MAP(x,__SC_DECL,__VA_ARGS__))</span></span><br></pre></td></tr></table></figure>
+
+<h1 id="3-总结"><a href="#3-总结" class="headerlink" title="3. 总结"></a>3. 总结</h1><ul>
+<li>系统调用的开销: <ul>
+<li>用户态切换到内核态，保存用户态现场信息</li>
+<li>内核态返回用户态，恢复用户态现场信息</li>
+</ul>
+</li>
+<li>不同平台的syscall number是不同的，即使arm和arm64也不相同</li>
+<li>每个系统调用xxx，在内核中都有对应的sys_xxx实现</li>
+</ul>
+<hr>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg" alt="程序员自我修养"></p>
+<center>
+程序员自我修养(ID: dumphex)
+</center>
+
+<hr>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div>坚持技术原创，感谢您的支持！</div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpg" alt="dumphex 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpg" alt="dumphex 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>dumphex
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://dumphex.github.io/2020/03/01/syscall/" title="syscall">https://dumphex.github.io/2020/03/01/syscall/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fa fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/arm64/" rel="tag"># arm64</a>
+              <a href="/tags/kernel/" rel="tag"># kernel</a>
+              <a href="/tags/syscall/" rel="tag"># syscall</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/02/25/segment_fault/" rel="prev" title="SegmentFault处理流程">
+      <i class="fa fa-chevron-left"></i> SegmentFault处理流程
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let activeClass = CONFIG.comments.activeClass;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#1-系统环境"><span class="nav-text">1. 系统环境</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#2-系统调用执行过程"><span class="nav-text">2. 系统调用执行过程</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-用户态"><span class="nav-text">2.1 用户态</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-1-mmap的实现"><span class="nav-text">2.1.1 mmap的实现</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-2-syscall-number"><span class="nav-text">2.1.2 syscall number</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-3-反汇编mmap"><span class="nav-text">2.1.3 反汇编mmap</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-内核态"><span class="nav-text">2.2 内核态</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-1-异常向量表"><span class="nav-text">2.2.1 异常向量表</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-2-系统调用表"><span class="nav-text">2.2.2 系统调用表</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-3-sys-mmap实现"><span class="nav-text">2.2.3 sys_mmap实现</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#3-总结"><span class="nav-text">3. 总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="dumphex"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">dumphex</p>
+  <div class="site-description" itemprop="description">专注于Linux/Android/C/C++等</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">5</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/dumphex" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;dumphex" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/3151a9dcd169" title="简书 → https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;3151a9dcd169" rel="noopener" target="_blank"><i class="fa fa-fw fa-book"></i>简书</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/images/programmer_qrcode.jpg" title="Wechat → images&#x2F;programmer_qrcode.jpg"><i class="fa fa-fw fa-wechat"></i>Wechat</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/dumphex@163.com" title="E-Mail → dumphex@163.com"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">dumphex</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  </div>
+  <span class="post-meta-divider">|</span>
+  <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.7.1
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+  <script>
+    (function(){
+      var bp = document.createElement('script');
+      var curProtocol = window.location.protocol.split(':')[0];
+      bp.src = (curProtocol === 'https') ? 'https://zz.bdstatic.com/linksubmit/push.js' : 'http://push.zhanzhang.baidu.com/push.js';
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(bp, s);
+    })();
+  </script>
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
