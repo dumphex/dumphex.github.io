@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"dumphex.github.io","root":"/","scheme":"Gemini","version":"7.7.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文分析了栈对象和堆对象的构造和析构过程。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="C++中的栈对象与堆对象">
+<meta property="og:url" content="https://dumphex.github.io/2020/03/04/stack-heap-object/index.html">
+<meta property="og:site_name" content="程序员自我修养">
+<meta property="og:description" content="本文分析了栈对象和堆对象的构造和析构过程。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+<meta property="article:published_time" content="2020-03-04T07:08:06.000Z">
+<meta property="article:modified_time" content="2020-03-04T07:16:51.672Z">
+<meta property="article:author" content="dumphex">
+<meta property="article:tag" content="stack object">
+<meta property="article:tag" content="heap object">
+<meta property="article:tag" content="new">
+<meta property="article:tag" content="delete">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+
+<link rel="canonical" href="https://dumphex.github.io/2020/03/04/stack-heap-object/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true
+  };
+</script>
+
+  <title>C++中的栈对象与堆对象 | 程序员自我修养</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">程序员自我修养</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-sitemap">
+
+    <a href="/sitemap.xml" rel="section"><i class="fa fa-fw fa-sitemap"></i>站点地图</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+
+</nav>
+  <div class="site-search">
+    <div class="popup search-popup">
+    <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocorrect="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result"></div>
+
+</div>
+<div class="search-pop-overlay"></div>
+
+  </div>
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://dumphex.github.io/2020/03/04/stack-heap-object/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="dumphex">
+      <meta itemprop="description" content="日拱一卒，功不唐捐。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="程序员自我修养">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          C++中的栈对象与堆对象
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-03-04 15:08:06 / 修改时间：15:16:51" itemprop="dateCreated datePublished" datetime="2020-03-04T15:08:06+08:00">2020-03-04</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/C-C/" itemprop="url" rel="index">
+                    <span itemprop="name">C/C++</span>
+                  </a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文分析了栈对象和堆对象的构造和析构过程。</p>
+<a id="more"></a>
+
+<h1 id="1-测试环境"><a href="#1-测试环境" class="headerlink" title="1. 测试环境"></a>1. 测试环境</h1><ul>
+<li>Linux ubuntu18arm64 4.15.0-76-generic #86-Ubuntu SMP Fri Jan 17 17:25:58 UTC 2020 aarch64 aarch64 aarch64 GNU/Linux</li>
+<li>gcc version 7.4.0 (Ubuntu/Linaro 7.4.0-1ubuntu1~18.04.1)</li>
+<li>c++11</li>
+</ul>
+<h1 id="2-调试分析"><a href="#2-调试分析" class="headerlink" title="2. 调试分析"></a>2. 调试分析</h1><p>在本文的栈对象和堆对象示例中，我们统一使用如下class。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Base</span> &#123;</span></span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  Base(<span class="keyword">int</span> i) : m_var(i) &#123;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  ~Base() &#123;</span><br><span class="line">    m_var = <span class="number">0</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="keyword">int</span> m_var;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-1-栈对象"><a href="#2-1-栈对象" class="headerlink" title="2.1 栈对象"></a>2.1 栈对象</h2><h3 id="2-1-1-测试代码"><a href="#2-1-1-测试代码" class="headerlink" title="2.1.1 测试代码"></a>2.1.1 测试代码</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">stack</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="function">Base <span class="title">stack_obj</span><span class="params">(<span class="number">1</span>)</span></span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>stack()的反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas</span><br><span class="line">Dump of assembler code for function stack():</span><br><span class="line">   0x0000aaaaaaaaae84 &lt;+0&gt;:	stp	x29, x30, [sp, #-32]!</span><br><span class="line">   0x0000aaaaaaaaae88 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaaae8c &lt;+8&gt;:	adrp	x0, 0xaaaaaaabb000</span><br><span class="line">   0x0000aaaaaaaaae90 &lt;+12&gt;:	ldr	x0, [x0, #4024]</span><br><span class="line">   0x0000aaaaaaaaae94 &lt;+16&gt;:	ldr	x1, [x0]</span><br><span class="line">   0x0000aaaaaaaaae98 &lt;+20&gt;:	str	x1, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaaae9c &lt;+24&gt;:	mov	x1, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">   0x0000aaaaaaaaaea0 &lt;+28&gt;:	add	x0, x29, #0x10</span><br><span class="line">   0x0000aaaaaaaaaea4 &lt;+32&gt;:	mov	w1, #0x1                   	&#x2F;&#x2F; #1</span><br><span class="line">   0x0000aaaaaaaaaea8 &lt;+36&gt;:	bl	0xaaaaaaaab098 &lt;Base::Base(int)&gt;</span><br><span class="line">&#x3D;&gt; 0x0000aaaaaaaaaeac &lt;+40&gt;:	add	x0, x29, #0x10</span><br><span class="line">   0x0000aaaaaaaaaeb0 &lt;+44&gt;:	bl	0xaaaaaaaab0bc &lt;Base::~Base()&gt;</span><br><span class="line">   0x0000aaaaaaaaaeb4 &lt;+48&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaaaeb8 &lt;+52&gt;:	adrp	x0, 0xaaaaaaabb000</span><br><span class="line">   0x0000aaaaaaaaaebc &lt;+56&gt;:	ldr	x0, [x0, #4024]</span><br><span class="line">   0x0000aaaaaaaaaec0 &lt;+60&gt;:	ldr	x1, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaaaec4 &lt;+64&gt;:	ldr	x0, [x0]</span><br><span class="line">   0x0000aaaaaaaaaec8 &lt;+68&gt;:	eor	x0, x1, x0</span><br><span class="line">   0x0000aaaaaaaaaecc &lt;+72&gt;:	cmp	x0, #0x0</span><br><span class="line">   0x0000aaaaaaaaaed0 &lt;+76&gt;:	b.eq	0xaaaaaaaaaed8 &lt;stack()+84&gt;  &#x2F;&#x2F; b.none</span><br><span class="line">   0x0000aaaaaaaaaed4 &lt;+80&gt;:	bl	0xaaaaaaaaacd0 &lt;__stack_chk_fail@plt&gt;</span><br><span class="line">   0x0000aaaaaaaaaed8 &lt;+84&gt;:	ldp	x29, x30, [sp], #32</span><br><span class="line">   0x0000aaaaaaaaaedc &lt;+88&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-1-2-构造"><a href="#2-1-2-构造" class="headerlink" title="2.1.2 构造"></a>2.1.2 构造</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaaadc0 &lt;+28&gt;:	add	x0, x29, #0x10</span><br><span class="line">0x0000aaaaaaaaadc4 &lt;+32&gt;:	mov	w1, #0x1                   	&#x2F;&#x2F; #1</span><br><span class="line">0x0000aaaaaaaaadc8 &lt;+36&gt;:	bl	0xaaaaaaaab008 &lt;Base::Base(int)&gt;</span><br></pre></td></tr></table></figure>
+<p>在本例里，<strong>栈对象的地址是x29 + 0x10</strong>, x29就是fp, 用于标识当前栈帧的起始地址，栈对象就位于fp偏移0x10的地方。</p>
+<p>调用构造函数Base::Base(int)时，传入的参数如下</p>
+<ul>
+<li>第1个参数是栈对象地址x0 = x29 + 0x10</li>
+<li>第2个参数是w1 = 1</li>
+</ul>
+<h3 id="2-1-3-析构"><a href="#2-1-3-析构" class="headerlink" title="2.1.3 析构"></a>2.1.3 析构</h3><p>对于栈对象，离开作用域前，将自动调用析构函数。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">&#x3D;&gt; 0x0000aaaaaaaaadcc &lt;+40&gt;:	add	x0, x29, #0x10</span><br><span class="line">   0x0000aaaaaaaaadd0 &lt;+44&gt;:	bl	0xaaaaaaaab08c &lt;Base::~Base()&gt;</span><br></pre></td></tr></table></figure>
+
+<p>调用析构函数很简单，传入栈对象地址，直接调用Base::~Base()即可。</p>
+<h2 id="2-2-堆对象"><a href="#2-2-堆对象" class="headerlink" title="2.2 堆对象"></a>2.2 堆对象</h2><h3 id="2-2-1-测试代码"><a href="#2-2-1-测试代码" class="headerlink" title="2.2.1 测试代码"></a>2.2.1 测试代码</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">heap</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  Base *heap_obj = <span class="keyword">new</span> Base(<span class="number">2</span>);</span><br><span class="line"></span><br><span class="line">  <span class="keyword">delete</span> heap_obj;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>heap()的反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas</span><br><span class="line">Dump of assembler code for function heap():</span><br><span class="line">   0x0000aaaaaaaaaee0 &lt;+0&gt;:	stp	x29, x30, [sp, #-48]!</span><br><span class="line">   0x0000aaaaaaaaaee4 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaaaee8 &lt;+8&gt;:	str	x19, [sp, #16]</span><br><span class="line">   0x0000aaaaaaaaaeec &lt;+12&gt;:	mov	x0, #0x4                   	&#x2F;&#x2F; #4</span><br><span class="line">   0x0000aaaaaaaaaef0 &lt;+16&gt;:	bl	0xaaaaaaaaad20 &lt;_Znwm@plt&gt;</span><br><span class="line">   0x0000aaaaaaaaaef4 &lt;+20&gt;:	mov	x19, x0</span><br><span class="line">   0x0000aaaaaaaaaef8 &lt;+24&gt;:	mov	w1, #0x2                   	&#x2F;&#x2F; #2</span><br><span class="line">   0x0000aaaaaaaaaefc &lt;+28&gt;:	mov	x0, x19</span><br><span class="line">   0x0000aaaaaaaaaf00 &lt;+32&gt;:	bl	0xaaaaaaaab098 &lt;Base::Base(int)&gt;</span><br><span class="line">&#x3D;&gt; 0x0000aaaaaaaaaf04 &lt;+36&gt;:	str	x19, [x29, #40]</span><br><span class="line">   0x0000aaaaaaaaaf08 &lt;+40&gt;:	ldr	x19, [x29, #40]</span><br><span class="line">   0x0000aaaaaaaaaf0c &lt;+44&gt;:	cmp	x19, #0x0</span><br><span class="line">   0x0000aaaaaaaaaf10 &lt;+48&gt;:	b.eq	0xaaaaaaaaaf24 &lt;heap()+68&gt;  &#x2F;&#x2F; b.none</span><br><span class="line">   0x0000aaaaaaaaaf14 &lt;+52&gt;:	mov	x0, x19</span><br><span class="line">   0x0000aaaaaaaaaf18 &lt;+56&gt;:	bl	0xaaaaaaaab0bc &lt;Base::~Base()&gt;</span><br><span class="line">   0x0000aaaaaaaaaf1c &lt;+60&gt;:	mov	x0, x19</span><br><span class="line">   0x0000aaaaaaaaaf20 &lt;+64&gt;:	bl	0xaaaaaaaaad10 &lt;_ZdlPv@plt&gt;</span><br><span class="line">   0x0000aaaaaaaaaf24 &lt;+68&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaaaf28 &lt;+72&gt;:	ldr	x19, [sp, #16]</span><br><span class="line">   0x0000aaaaaaaaaf2c &lt;+76&gt;:	ldp	x29, x30, [sp], #48</span><br><span class="line">   0x0000aaaaaaaaaf30 &lt;+80&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-2-2-构造"><a href="#2-2-2-构造" class="headerlink" title="2.2.2 构造"></a>2.2.2 构造</h3><p>对于堆对象，通过<strong>new运算符</strong>显式构造。</p>
+<ul>
+<li>调用operator new分配内存</li>
+<li>调用构造函数</li>
+<li>返回堆对象指针</li>
+</ul>
+<p>先看分配内存</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaaaeec &lt;+12&gt;:	mov	x0, #0x4                   	&#x2F;&#x2F; #4</span><br><span class="line">0x0000aaaaaaaaaef0 &lt;+16&gt;:	bl	0xaaaaaaaaad20 &lt;_Znwm@plt&gt;</span><br><span class="line">0x0000aaaaaaaaaef4 &lt;+20&gt;:	mov	x19, x0</span><br></pre></td></tr></table></figure>
+<p>Base类只有一个数据成员int m_var, 在编译期能获知其实例大小为4。 然后传给operator new函数去分配4字节大小的堆内存。若分配成功，则将堆内存地址保存到x19</p>
+<p>operator new的实现</p>
+<blockquote>
+<p>源文件: gcc/libstdc++-v3/libsupc++/new_op.cc</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">_GLIBCXX_WEAK_DEFINITION <span class="keyword">void</span> *</span><br><span class="line"><span class="function"><span class="keyword">operator</span> <span class="title">new</span> <span class="params">(<span class="built_in">std</span>::<span class="keyword">size_t</span> sz)</span> _<span class="title">GLIBCXX_THROW</span> <span class="params">(<span class="built_in">std</span>::bad_alloc)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">void</span> *p; </span><br><span class="line"></span><br><span class="line">  <span class="comment">/* malloc (0) is unpredictable; avoid it.  */</span></span><br><span class="line">  <span class="keyword">if</span> (sz == <span class="number">0</span>)</span><br><span class="line">    sz = <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">while</span> (__builtin_expect ((p = <span class="built_in">malloc</span> (sz)) == <span class="number">0</span>, <span class="literal">false</span>))</span><br><span class="line">    &#123;   </span><br><span class="line">      new_handler handler = <span class="built_in">std</span>::get_new_handler (); </span><br><span class="line">      <span class="keyword">if</span> (! handler)</span><br><span class="line">        _GLIBCXX_THROW_OR_ABORT(bad_alloc());</span><br><span class="line">      handler (); </span><br><span class="line">    &#125;   </span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> p;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>operator new实现如下</p>
+<ul>
+<li>调用c库函数<strong>malloc</strong>()尝试分配内存。若分配成功， 则返回。</li>
+<li>malloc()分配失败后， 会先获取new handler(通过std::set_new_handler()设置)。若handler不为空，则调用handler，否则抛出<strong>bad_alloc</strong>异常。<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">terminate called after throwing an instance of &#39;std::bad_alloc&#39;</span><br><span class="line">  what():  std::bad_alloc</span><br><span class="line">Aborted (core dumped)</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<blockquote>
+<p>注: 若在Base内将operator new重载为private, 则该类不能生成堆对象。</p>
+</blockquote>
+<p>再看调用构造函数</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaaaef8 &lt;+24&gt;:	mov	w1, #0x2                   	&#x2F;&#x2F; #2</span><br><span class="line">0x0000aaaaaaaaaefc &lt;+28&gt;:	mov	x0, x19</span><br><span class="line">0x0000aaaaaaaaaf00 &lt;+32&gt;:	bl	0xaaaaaaaab098 &lt;Base::Base(int)&gt;</span><br></pre></td></tr></table></figure>
+
+<p>调用构造函数Base::Base(int)时，传入的参数如下</p>
+<ul>
+<li>第1个参数是operator new返回的堆内存地址x0</li>
+<li>第2个参数是w1 = 2</li>
+</ul>
+<p>最后将堆对象指针存储到栈内</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">&#x3D;&gt; 0x0000aaaaaaaaaf04 &lt;+36&gt;:	str	x19, [x29, #40]</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-2-3-析构"><a href="#2-2-3-析构" class="headerlink" title="2.2.3 析构"></a>2.2.3 析构</h3><p>对于堆对象，通过<strong>delete运算符</strong>显式析构。</p>
+<ul>
+<li>调用堆对象的析函数</li>
+<li>调用operator delete释放内存</li>
+</ul>
+<p>先看调用堆对象的析构函数</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaaaf08 &lt;+40&gt;:	ldr	x19, [x29, #40]</span><br><span class="line">0x0000aaaaaaaaaf0c &lt;+44&gt;:	cmp	x19, #0x0</span><br><span class="line">0x0000aaaaaaaaaf10 &lt;+48&gt;:	b.eq	0xaaaaaaaaaf24 &lt;heap()+68&gt;  &#x2F;&#x2F; b.none</span><br><span class="line">0x0000aaaaaaaaaf14 &lt;+52&gt;:	mov	x0, x19</span><br><span class="line">0x0000aaaaaaaaaf18 &lt;+56&gt;:	bl	0xaaaaaaaab0bc &lt;Base::~Base()&gt;</span><br></pre></td></tr></table></figure>
+
+<p>检查堆对象指针是否为空</p>
+<ul>
+<li>若是，则跳过析构函数和operator delete 函数的调用(<strong>delete空指针没问题</strong>)</li>
+<li>否则，调用析构函数</li>
+</ul>
+<p>再看调用operator delete释放堆内存</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaaaf1c &lt;+60&gt;:	mov	x0, x19</span><br><span class="line">0x0000aaaaaaaaaf20 &lt;+64&gt;:	bl	0xaaaaaaaaad10 &lt;_ZdlPv@plt&gt;</span><br></pre></td></tr></table></figure>
+
+<p>最后看下operator delete的实现</p>
+<blockquote>
+<p>源文件: gcc/libstdc++-v3/libsupc++/del_op.cc</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">_GLIBCXX_WEAK_DEFINITION <span class="keyword">void</span></span><br><span class="line"><span class="function"><span class="keyword">operator</span> <span class="title">delete</span><span class="params">(<span class="keyword">void</span>* ptr)</span> _GLIBCXX_USE_NOEXCEPT</span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="built_in">std</span>::<span class="built_in">free</span>(ptr);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，operator delete直接调用了c库的free()函数</p>
+<h1 id="3-总结"><a href="#3-总结" class="headerlink" title="3. 总结"></a>3. 总结</h1><ul>
+<li><strong>栈对象</strong>位于<strong>stack</strong>，定义栈对象时自动构造完成初始化，超出作用域后自动析构，开发人员不必刻意维护栈对象。</li>
+<li><strong>堆对象</strong>位于<strong>heap</strong>, 需要new/delete(间接调用malloc()/free())显式构造和析构，如果没有及时析构容易引起内存泄露，可借助<strong>智能指针</strong>加强堆对象的内存管理。</li>
+</ul>
+<hr>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg" alt="程序员自我修养"></p>
+<center>
+程序员自我修养(ID: dumphex)
+</center>
+
+<hr>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div>坚持技术原创，感谢您的支持！</div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpg" alt="dumphex 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpg" alt="dumphex 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>dumphex
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://dumphex.github.io/2020/03/04/stack-heap-object/" title="C++中的栈对象与堆对象">https://dumphex.github.io/2020/03/04/stack-heap-object/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fa fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/stack-object/" rel="tag"># stack object</a>
+              <a href="/tags/heap-object/" rel="tag"># heap object</a>
+              <a href="/tags/new/" rel="tag"># new</a>
+              <a href="/tags/delete/" rel="tag"># delete</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/03/01/syscall/" rel="prev" title="系统调用实现原理">
+      <i class="fa fa-chevron-left"></i> 系统调用实现原理
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let activeClass = CONFIG.comments.activeClass;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#1-测试环境"><span class="nav-text">1. 测试环境</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#2-调试分析"><span class="nav-text">2. 调试分析</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-1-栈对象"><span class="nav-text">2.1 栈对象</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-1-测试代码"><span class="nav-text">2.1.1 测试代码</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-2-构造"><span class="nav-text">2.1.2 构造</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-3-析构"><span class="nav-text">2.1.3 析构</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-2-堆对象"><span class="nav-text">2.2 堆对象</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-1-测试代码"><span class="nav-text">2.2.1 测试代码</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-2-构造"><span class="nav-text">2.2.2 构造</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-3-析构"><span class="nav-text">2.2.3 析构</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#3-总结"><span class="nav-text">3. 总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="dumphex"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">dumphex</p>
+  <div class="site-description" itemprop="description">日拱一卒，功不唐捐。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">14</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/dumphex" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;dumphex" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/3151a9dcd169" title="简书 → https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;3151a9dcd169" rel="noopener" target="_blank"><i class="fa fa-fw fa-book"></i>简书</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/images/programmer_qrcode.jpg" title="Wechat → images&#x2F;programmer_qrcode.jpg"><i class="fa fa-fw fa-wechat"></i>Wechat</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/dumphex@163.com" title="E-Mail → dumphex@163.com"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">dumphex</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  </div>
+  <span class="post-meta-divider">|</span>
+  <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.7.1
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+  <script>
+    (function(){
+      var bp = document.createElement('script');
+      var curProtocol = window.location.protocol.split(':')[0];
+      bp.src = (curProtocol === 'https') ? 'https://zz.bdstatic.com/linksubmit/push.js' : 'http://push.zhanzhang.baidu.com/push.js';
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(bp, s);
+    })();
+  </script>
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
