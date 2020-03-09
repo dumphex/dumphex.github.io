@@ -2,6 +2,13 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://dumphex.github.io/2020/03/09/local-static-object/</loc>
+    
+    <lastmod>2020-03-09T02:55:31.777Z</lastmod>
+    
+  </url>
+  
+  <url>
     <loc>https://dumphex.github.io/2020/03/04/stack-heap-object/</loc>
     
     <lastmod>2020-03-04T07:16:51.672Z</lastmod>
