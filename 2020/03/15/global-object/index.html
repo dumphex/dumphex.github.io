@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"dumphex.github.io","root":"/","scheme":"Gemini","version":"7.7.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文分析了全局对象的构造和析构过程。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="c++的全局对象">
+<meta property="og:url" content="https://dumphex.github.io/2020/03/15/global-object/index.html">
+<meta property="og:site_name" content="程序员自我修养">
+<meta property="og:description" content="本文分析了全局对象的构造和析构过程。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+<meta property="article:published_time" content="2020-03-15T06:47:21.000Z">
+<meta property="article:modified_time" content="2020-03-15T07:21:09.494Z">
+<meta property="article:author" content="dumphex">
+<meta property="article:tag" content="__run_exit_handlers">
+<meta property="article:tag" content="global object">
+<meta property="article:tag" content="_start">
+<meta property="article:tag" content="__libc_start_main">
+<meta property="article:tag" content="__libc_csu_init">
+<meta property="article:tag" content="__static_initialization_and_destruction_0">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+
+<link rel="canonical" href="https://dumphex.github.io/2020/03/15/global-object/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true
+  };
+</script>
+
+  <title>c++的全局对象 | 程序员自我修养</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">程序员自我修养</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-sitemap">
+
+    <a href="/sitemap.xml" rel="section"><i class="fa fa-fw fa-sitemap"></i>站点地图</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+
+</nav>
+  <div class="site-search">
+    <div class="popup search-popup">
+    <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocorrect="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result"></div>
+
+</div>
+<div class="search-pop-overlay"></div>
+
+  </div>
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://dumphex.github.io/2020/03/15/global-object/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="dumphex">
+      <meta itemprop="description" content="日拱一卒，功不唐捐。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="程序员自我修养">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          c++的全局对象
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-03-15 14:47:21 / 修改时间：15:21:09" itemprop="dateCreated datePublished" datetime="2020-03-15T14:47:21+08:00">2020-03-15</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/C-C/" itemprop="url" rel="index">
+                    <span itemprop="name">C/C++</span>
+                  </a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文分析了全局对象的构造和析构过程。</p>
+<a id="more"></a>
+
+<h2 id="1-测试环境"><a href="#1-测试环境" class="headerlink" title="1. 测试环境"></a>1. 测试环境</h2><ul>
+<li>Linux ubuntu18arm64 4.15.0-76-generic #86-Ubuntu SMP Fri Jan 17 17:25:58 UTC 2020 aarch64 aarch64 aarch64 GNU/Linux</li>
+<li>gcc version 7.4.0 (Ubuntu/Linaro 7.4.0-1ubuntu1~18.04.1)</li>
+<li>glibc 2.27</li>
+<li>c++11</li>
+</ul>
+<h2 id="2-调试分析"><a href="#2-调试分析" class="headerlink" title="2. 调试分析"></a>2. 调试分析</h2><h3 id="2-1-测试源码"><a href="#2-1-测试源码" class="headerlink" title="2.1 测试源码"></a>2.1 测试源码</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Base</span> &#123;</span></span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  Base(<span class="keyword">int</span> i) : m_var(i) &#123;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  ~Base() &#123;</span><br><span class="line">    m_var = <span class="number">0</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="keyword">int</span> m_var;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="function">Base <span class="title">global_obj</span><span class="params">(<span class="number">4</span>)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-2-构造"><a href="#2-2-构造" class="headerlink" title="2.2 构造"></a>2.2 构造</h3><p>全局对象的构造函数调用堆栈如下:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">(gdb) bt</span><br><span class="line">#0  Base::Base (this&#x3D;0xaaaaaaabc018 &lt;global_obj&gt;, i&#x3D;4) at &#x2F;home&#x2F;timzhang&#x2F;project&#x2F;github&#x2F;dumphex&#x2F;cppTestSuite&#x2F;src&#x2F;objects.cc:5</span><br><span class="line">#1  0x0000aaaaaaaab054 in __static_initialization_and_destruction_0 (__initialize_p&#x3D;1, __priority&#x3D;65535) at &#x2F;home&#x2F;timzhang&#x2F;project&#x2F;github&#x2F;dumphex&#x2F;cppTestSuite&#x2F;src&#x2F;objects.cc:30</span><br><span class="line">#2  0x0000aaaaaaaab090 in _GLOBAL__sub_I__Z5stackv () at &#x2F;home&#x2F;timzhang&#x2F;project&#x2F;github&#x2F;dumphex&#x2F;cppTestSuite&#x2F;src&#x2F;objects.cc:39</span><br><span class="line">#3  0x0000aaaaaaaab138 in __libc_csu_init ()</span><br><span class="line">#4  0x0000fffff7d05688 in __libc_start_main (main&#x3D;0xfffff7fc2190, argc&#x3D;0, argv&#x3D;0xfffffffff3e8, init&#x3D;0x2, fini&#x3D;&lt;optimized out&gt;, rtld_fini&#x3D;&lt;optimized out&gt;, stack_end&#x3D;&lt;optimized out&gt;)</span><br><span class="line">    at ..&#x2F;csu&#x2F;libc-start.c:266</span><br><span class="line">#5  0x0000aaaaaaaaadb4 in _start ()</span><br><span class="line">Backtrace stopped: previous frame identical to this frame (corrupt stack?)</span><br></pre></td></tr></table></figure>
+
+<p>下面从#5往上推算全局对象的构造过程。</p>
+<h4 id="2-2-1-start"><a href="#2-2-1-start" class="headerlink" title="2.2.1 _start"></a>2.2.1 _start</h4><p>查看Linux程序的入口点</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> readelf -h objects </span></span><br><span class="line">ELF Header:</span><br><span class="line">  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 </span><br><span class="line">  Class:                             ELF64</span><br><span class="line">  Data:                              2's complement, little endian</span><br><span class="line">  Version:                           1 (current)</span><br><span class="line">  OS/ABI:                            UNIX - System V</span><br><span class="line">  ABI Version:                       0</span><br><span class="line">  Type:                              DYN (Shared object file)</span><br><span class="line">  Machine:                           AArch64</span><br><span class="line">  Version:                           0x1</span><br><span class="line">  Entry point address:               0xd80</span><br><span class="line">  Start of program headers:          64 (bytes into file)</span><br><span class="line">  Start of section headers:          33240 (bytes into file)</span><br><span class="line">  Flags:                             0x0</span><br><span class="line">  Size of this header:               64 (bytes)</span><br><span class="line">  Size of program headers:           56 (bytes)</span><br><span class="line">  Number of program headers:         9</span><br><span class="line">  Size of section headers:           64 (bytes)</span><br><span class="line">  Number of section headers:         34</span><br><span class="line">  Section header string table index: 33</span><br></pre></td></tr></table></figure>
+
+<p>通过Entry point address:               0xd80， 可以找到程序的入口点位于程序偏移0xd80处</p>
+<p>objects程序的内存映射如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">aaaaaaaaa000-aaaaaaaac000 r-xp 00000000 fd:00 2883810                    &#x2F;home&#x2F;timzhang&#x2F;project&#x2F;github&#x2F;dumphex&#x2F;cppTestSuite&#x2F;out&#x2F;bin&#x2F;objects</span><br><span class="line">aaaaaaabb000-aaaaaaabc000 r--p 00001000 fd:00 2883810                    &#x2F;home&#x2F;timzhang&#x2F;project&#x2F;github&#x2F;dumphex&#x2F;cppTestSuite&#x2F;out&#x2F;bin&#x2F;objects</span><br><span class="line">aaaaaaabc000-aaaaaaabd000 rw-p 00002000 fd:00 2883810                    &#x2F;home&#x2F;timzhang&#x2F;project&#x2F;github&#x2F;dumphex&#x2F;cppTestSuite&#x2F;out&#x2F;bin&#x2F;objects</span><br></pre></td></tr></table></figure>
+
+<p>反汇编入口点地址如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas 0xaaaaaaaaa000+0xd80</span><br><span class="line">Dump of assembler code for function _start:</span><br><span class="line">   0x0000aaaaaaaaad80 &lt;+0&gt;:	mov	x29, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">   0x0000aaaaaaaaad84 &lt;+4&gt;:	mov	x30, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">   0x0000aaaaaaaaad88 &lt;+8&gt;:	mov	x5, x0</span><br><span class="line">   0x0000aaaaaaaaad8c &lt;+12&gt;:	ldr	x1, [sp]</span><br><span class="line">   0x0000aaaaaaaaad90 &lt;+16&gt;:	add	x2, sp, #0x8</span><br><span class="line">   0x0000aaaaaaaaad94 &lt;+20&gt;:	mov	x6, sp</span><br><span class="line">   0x0000aaaaaaaaad98 &lt;+24&gt;:	adrp	x0, 0xaaaaaaabb000</span><br><span class="line">   0x0000aaaaaaaaad9c &lt;+28&gt;:	ldr	x0, [x0, #4032]</span><br><span class="line">   0x0000aaaaaaaaada0 &lt;+32&gt;:	adrp	x3, 0xaaaaaaabb000</span><br><span class="line">   0x0000aaaaaaaaada4 &lt;+36&gt;:	ldr	x3, [x3, #4048]</span><br><span class="line">   0x0000aaaaaaaaada8 &lt;+40&gt;:	adrp	x4, 0xaaaaaaabb000</span><br><span class="line">   0x0000aaaaaaaaadac &lt;+44&gt;:	ldr	x4, [x4, #4064]</span><br><span class="line">   0x0000aaaaaaaaadb0 &lt;+48&gt;:	bl	0xaaaaaaaaad00 &lt;__libc_start_main@plt&gt;</span><br><span class="line">   0x0000aaaaaaaaadb4 &lt;+52&gt;:	bl	0xaaaaaaaaad50 &lt;abort@plt&gt;</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，Linux下用户态程序的入口点是_start()函数</p>
+<blockquote>
+<p>源文件: glibc/ports/sysdeps/aarch64/start.S</p>
+</blockquote>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line">        .text</span><br><span class="line">        .globl _start</span><br><span class="line">        .type _start,#function</span><br><span class="line">_start:</span><br><span class="line">        &#x2F;* Create an initial frame with 0 LR and FP *&#x2F;</span><br><span class="line">        mov     x29, #0</span><br><span class="line">        mov     x30, #0</span><br><span class="line">        mov     x29, sp</span><br><span class="line"></span><br><span class="line">        &#x2F;* Setup rtld_fini in argument register *&#x2F;</span><br><span class="line">        mov     x5, x0</span><br><span class="line"></span><br><span class="line">        &#x2F;* Load argc and a pointer to argv *&#x2F;</span><br><span class="line">        ldr     x1, [sp, #0] </span><br><span class="line">        add     x2, sp, #8</span><br><span class="line"></span><br><span class="line">        &#x2F;* Setup stack limit in argument register *&#x2F;</span><br><span class="line">        mov     x6, sp</span><br><span class="line"></span><br><span class="line">#ifdef SHARED</span><br><span class="line">        adrp    x0, :got:main</span><br><span class="line">        ldr     x0, [x0, #:got_lo12:main]</span><br><span class="line"></span><br><span class="line">        adrp    x3, :got:__libc_csu_init</span><br><span class="line">        ldr     x3, [x3, #:got_lo12:__libc_csu_init]</span><br><span class="line"></span><br><span class="line">        adrp    x4, :got:__libc_csu_fini</span><br><span class="line">        ldr     x4, [x4, #:got_lo12:__libc_csu_fini]</span><br><span class="line">#else</span><br><span class="line">        &#x2F;* Set up the other arguments in registers *&#x2F;</span><br><span class="line">        ldr     x0, &#x3D;main</span><br><span class="line">        ldr     x3, &#x3D;__libc_csu_init</span><br><span class="line">        ldr     x4, &#x3D;__libc_csu_fini</span><br><span class="line">#endif</span><br><span class="line"></span><br><span class="line">        &#x2F;* __libc_start_main (main, argc, argv, init, fini, rtld_fini,</span><br><span class="line">                              stack_end) *&#x2F;</span><br><span class="line"></span><br><span class="line">        &#x2F;* Let the libc call main and exit with its return code.  *&#x2F;</span><br><span class="line">        bl      __libc_start_main</span><br><span class="line"></span><br><span class="line">        &#x2F;* should never get here....*&#x2F;</span><br><span class="line">        bl      abort</span><br></pre></td></tr></table></figure>
+
+<p>这里需要重点关注的是第4个参数: x3 = __libc_csu_init</p>
+<h4 id="2-2-2-libc-start-main"><a href="#2-2-2-libc-start-main" class="headerlink" title="2.2.2 __libc_start_main"></a>2.2.2 __libc_start_main</h4><blockquote>
+<p>源文件: glibc/csu/libc-start.c</p>
+</blockquote>
+<p>__libc_start_main()代码较多， 这里简单列出相关实现:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (init)</span><br><span class="line">  (*init) (argc, argv, __environ MAIN_AUXVEC_PARAM);</span><br><span class="line">  </span><br><span class="line">result = main (argc, argv, __environ MAIN_AUXVEC_PARAM);</span><br><span class="line"></span><br><span class="line"><span class="built_in">exit</span>(result);</span><br></pre></td></tr></table></figure>
+
+<p>相关实现主要有三点</p>
+<ul>
+<li><p>调用*init(), init就是在_start中传入的x3 = __libc_csu_init</p>
+</li>
+<li><p>调用main(), 执行程序</p>
+</li>
+<li><p>exit(): 负责调用退出处理函数，如回调函数或析构函数</p>
+</li>
+</ul>
+<h4 id="2-2-3-libc-csu-init"><a href="#2-2-3-libc-csu-init" class="headerlink" title="2.2.3 __libc_csu_init"></a>2.2.3 __libc_csu_init</h4><blockquote>
+<p>源文件: glibc/csu/elf-init.c</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* These functions are passed to __libc_start_main by the startup code.</span></span><br><span class="line"><span class="comment">   These get statically linked into each program.  For dynamically linked</span></span><br><span class="line"><span class="comment">   programs, this module will come from libc_nonshared.a and differs from</span></span><br><span class="line"><span class="comment">   the libc.a module in that it doesn't call the preinit array.  */</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">void</span></span><br><span class="line">__libc_csu_init (<span class="keyword">int</span> argc, <span class="keyword">char</span> **argv, <span class="keyword">char</span> **envp)</span><br><span class="line">&#123;</span><br><span class="line">  <span class="comment">/* For dynamically linked executables the preinit array is executed by</span></span><br><span class="line"><span class="comment">     the dynamic linker (before initializing any shared object).  */</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> LIBC_NONSHARED</span></span><br><span class="line">  <span class="comment">/* For static executables, preinit happens right before init.  */</span></span><br><span class="line">  &#123;</span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">size_t</span> <span class="built_in">size</span> = __preinit_array_end - __preinit_array_start;</span><br><span class="line">    <span class="keyword">size_t</span> i;</span><br><span class="line">    <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; <span class="built_in">size</span>; i++)</span><br><span class="line">      (*__preinit_array_start [i]) (argc, argv, envp);</span><br><span class="line">  &#125;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">  _init (); </span><br><span class="line"></span><br><span class="line">  <span class="keyword">const</span> <span class="keyword">size_t</span> <span class="built_in">size</span> = __init_array_end - __init_array_start;</span><br><span class="line">  <span class="keyword">for</span> (<span class="keyword">size_t</span> i = <span class="number">0</span>; i &lt; <span class="built_in">size</span>; i++)</span><br><span class="line">      (*__init_array_start [i]) (argc, argv, envp);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>_init()函数位于程序的.init section, </p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas 0xaaaaaaaaa000+0xc98</span><br><span class="line">Dump of assembler code for function _init:</span><br><span class="line">   0x0000aaaaaaaaac98 &lt;+0&gt;:	stp	x29, x30, [sp, #-16]!</span><br><span class="line">   0x0000aaaaaaaaac9c &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaaaca0 &lt;+8&gt;:	bl	0xaaaaaaaaadb8 &lt;call_weak_fn&gt;</span><br><span class="line">   0x0000aaaaaaaaaca4 &lt;+12&gt;:	ldp	x29, x30, [sp], #16</span><br><span class="line">   0x0000aaaaaaaaaca8 &lt;+16&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0xaaaaaaaaadb8</span><br><span class="line">Dump of assembler code for function call_weak_fn:</span><br><span class="line">   0x0000aaaaaaaaadb8 &lt;+0&gt;:	adrp	x0, 0xaaaaaaabb000</span><br><span class="line">   0x0000aaaaaaaaadbc &lt;+4&gt;:	ldr	x0, [x0, #4072]</span><br><span class="line">   0x0000aaaaaaaaadc0 &lt;+8&gt;:	cbz	x0, 0xaaaaaaaaadc8 &lt;call_weak_fn+16&gt;</span><br><span class="line">   0x0000aaaaaaaaadc4 &lt;+12&gt;:	b	0xaaaaaaaaad70 &lt;__gmon_start__@plt&gt;</span><br><span class="line">   0x0000aaaaaaaaadc8 &lt;+16&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) x&#x2F;4xw 0xaaaaaaabb000+4072</span><br><span class="line">0xaaaaaaabbfe8:	0x00000000	0x00000000	0x00000000	0x00000000</span><br></pre></td></tr></table></figure>
+<p>这里看起来，_init()函数什么也没做。</p>
+<p>继续看最后的循环部分</p>
+<p>由于没有找到<strong>init_array_start/</strong>init_array_end的相关定义， 这里反汇编__libc_csu_init()来分析</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas __libc_csu_init</span><br><span class="line">Dump of assembler code for function __libc_csu_init:</span><br><span class="line">   0x0000aaaaaaaab0d8 &lt;+0&gt;:	stp	x29, x30, [sp, #-64]!</span><br><span class="line">   0x0000aaaaaaaab0dc &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaab0e0 &lt;+8&gt;:	stp	x20, x21, [sp, #24]</span><br><span class="line">   0x0000aaaaaaaab0e4 &lt;+12&gt;:	adrp	x20, 0xaaaaaaabb000</span><br><span class="line">   0x0000aaaaaaaab0e8 &lt;+16&gt;:	adrp	x21, 0xaaaaaaabb000</span><br><span class="line">   0x0000aaaaaaaab0ec &lt;+20&gt;:	add	x20, x20, #0xd28</span><br><span class="line">   0x0000aaaaaaaab0f0 &lt;+24&gt;:	add	x21, x21, #0xd18</span><br><span class="line">   0x0000aaaaaaaab0f4 &lt;+28&gt;:	stp	x22, x23, [sp, #40]</span><br><span class="line">   0x0000aaaaaaaab0f8 &lt;+32&gt;:	sub	x20, x20, x21</span><br><span class="line">   0x0000aaaaaaaab0fc &lt;+36&gt;:	str	x24, [sp, #56]</span><br><span class="line">   0x0000aaaaaaaab100 &lt;+40&gt;:	mov	w22, w0</span><br><span class="line">   0x0000aaaaaaaab104 &lt;+44&gt;:	mov	x23, x1</span><br><span class="line">   0x0000aaaaaaaab108 &lt;+48&gt;:	asr	x20, x20, #3</span><br><span class="line">   0x0000aaaaaaaab10c &lt;+52&gt;:	mov	x24, x2</span><br><span class="line">   0x0000aaaaaaaab110 &lt;+56&gt;:	bl	0xaaaaaaaaac98 &lt;_init&gt;</span><br><span class="line">   0x0000aaaaaaaab114 &lt;+60&gt;:	cbz	x20, 0xaaaaaaaab144 &lt;__libc_csu_init+108&gt;</span><br><span class="line">   0x0000aaaaaaaab118 &lt;+64&gt;:	str	x19, [x29, #16]</span><br><span class="line">   0x0000aaaaaaaab11c &lt;+68&gt;:	mov	x19, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">   0x0000aaaaaaaab120 &lt;+72&gt;:	ldr	x3, [x21, x19, lsl #3]</span><br><span class="line">   0x0000aaaaaaaab124 &lt;+76&gt;:	mov	x2, x24</span><br><span class="line">   0x0000aaaaaaaab128 &lt;+80&gt;:	mov	x1, x23</span><br><span class="line">   0x0000aaaaaaaab12c &lt;+84&gt;:	mov	w0, w22</span><br><span class="line">   0x0000aaaaaaaab130 &lt;+88&gt;:	add	x19, x19, #0x1</span><br><span class="line">   0x0000aaaaaaaab134 &lt;+92&gt;:	blr	x3</span><br><span class="line">&#x3D;&gt; 0x0000aaaaaaaab138 &lt;+96&gt;:	cmp	x20, x19</span><br><span class="line">   0x0000aaaaaaaab13c &lt;+100&gt;:	b.ne	0xaaaaaaaab120 &lt;__libc_csu_init+72&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">   0x0000aaaaaaaab140 &lt;+104&gt;:	ldr	x19, [x29, #16]</span><br><span class="line">   0x0000aaaaaaaab144 &lt;+108&gt;:	ldp	x20, x21, [sp, #24]</span><br><span class="line">   0x0000aaaaaaaab148 &lt;+112&gt;:	ldp	x22, x23, [sp, #40]</span><br><span class="line">   0x0000aaaaaaaab14c &lt;+116&gt;:	ldr	x24, [sp, #56]</span><br><span class="line">   0x0000aaaaaaaab150 &lt;+120&gt;:	ldp	x29, x30, [sp], #64</span><br><span class="line">   0x0000aaaaaaaab154 &lt;+124&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p>__init_array_start = x21 = 0xaaaaaaabb000 + 0xd18 = 0xaaaaaaabbd18</p>
+<p>__init_array_end = x20 = 0xaaaaaaabb000 + 0xd28 = 0xaaaaaaabbd28</p>
+<p>__init_array_start[]数组主要存储了两个函数</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;2xg 0xaaaaaaabbd18</span><br><span class="line">0xaaaaaaabbd18:	0x0000aaaaaaaaae80	0x0000aaaaaaaab07c</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaaae80</span><br><span class="line">Dump of assembler code for function frame_dummy:</span><br><span class="line">   0x0000aaaaaaaaae80 &lt;+0&gt;:	b	0xaaaaaaaaae00 &lt;register_tm_clones&gt;</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab07c</span><br><span class="line">Dump of assembler code for function _GLOBAL__sub_I__Z5stackv():</span><br><span class="line">   0x0000aaaaaaaab07c &lt;+0&gt;:	stp	x29, x30, [sp, #-16]!</span><br><span class="line">   0x0000aaaaaaaab080 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaab084 &lt;+8&gt;:	mov	w1, #0xffff                	&#x2F;&#x2F; #65535</span><br><span class="line">   0x0000aaaaaaaab088 &lt;+12&gt;:	mov	w0, #0x1                   	&#x2F;&#x2F; #1</span><br><span class="line">   0x0000aaaaaaaab08c &lt;+16&gt;:	bl	0xaaaaaaaaaff0 &lt;__static_initialization_and_destruction_0(int, int)&gt;</span><br><span class="line">   0x0000aaaaaaaab090 &lt;+20&gt;:	ldp	x29, x30, [sp], #16</span><br><span class="line">   0x0000aaaaaaaab094 &lt;+24&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p>每个CPP源文件，都是个编译单元。在该编译单元中，编译器会生成特定的函数初始化当前编译单元的全局对象，而这些函数都统一放在__init_array_start[]数组。</p>
+<h4 id="2-2-4-GLOBAL-sub-I-Z5stackv"><a href="#2-2-4-GLOBAL-sub-I-Z5stackv" class="headerlink" title="2.2.4 _GLOBAL__sub_I__Z5stackv"></a>2.2.4 _GLOBAL__sub_I__Z5stackv</h4><p>此类函数名称类似如下</p>
+<ul>
+<li>_GLOBAL__sub_I__Z5stackv</li>
+<li>_GLOBAL__sub_I_b1</li>
+<li>_GLOBAL__sub_I_b2</li>
+<li>… …</li>
+</ul>
+<p>这类函数，会调用另一个函数__static_initialization_and_destruction_0</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas</span><br><span class="line">Dump of assembler code for function _GLOBAL__sub_I__Z5stackv():</span><br><span class="line">   0x0000aaaaaaaab07c &lt;+0&gt;:	stp	x29, x30, [sp, #-16]!</span><br><span class="line">   0x0000aaaaaaaab080 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaab084 &lt;+8&gt;:	mov	w1, #0xffff                	&#x2F;&#x2F; #65535</span><br><span class="line">   0x0000aaaaaaaab088 &lt;+12&gt;:	mov	w0, #0x1                   	&#x2F;&#x2F; #1</span><br><span class="line">   0x0000aaaaaaaab08c &lt;+16&gt;:	bl	0xaaaaaaaaaff0 &lt;__static_initialization_and_destruction_0(int, int)&gt;</span><br><span class="line">&#x3D;&gt; 0x0000aaaaaaaab090 &lt;+20&gt;:	ldp	x29, x30, [sp], #16</span><br><span class="line">   0x0000aaaaaaaab094 &lt;+24&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<h4 id="2-2-5-static-initialization-and-destruction-0"><a href="#2-2-5-static-initialization-and-destruction-0" class="headerlink" title="2.2.5 __static_initialization_and_destruction_0"></a>2.2.5 __static_initialization_and_destruction_0</h4><p>该函数主要用于完成当前编译单元内的全局对象的构造和注册析构函数。</p>
+<p>__static_initialization_and_destruction_0的汇编code如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas</span><br><span class="line">Dump of assembler code for function __static_initialization_and_destruction_0(int, int):</span><br><span class="line">   0x0000aaaaaaaaaff0 &lt;+0&gt;:	stp	x29, x30, [sp, #-32]!</span><br><span class="line">   0x0000aaaaaaaaaff4 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaaaff8 &lt;+8&gt;:	str	w0, [x29, #28]</span><br><span class="line">   0x0000aaaaaaaaaffc &lt;+12&gt;:	str	w1, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab000 &lt;+16&gt;:	ldr	w0, [x29, #28]</span><br><span class="line">   0x0000aaaaaaaab004 &lt;+20&gt;:	cmp	w0, #0x1</span><br><span class="line">   0x0000aaaaaaaab008 &lt;+24&gt;:	b.ne	0xaaaaaaaab070 &lt;__static_initialization_and_destruction_0(int, int)+128&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">   0x0000aaaaaaaab00c &lt;+28&gt;:	ldr	w1, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab010 &lt;+32&gt;:	mov	w0, #0xffff                	&#x2F;&#x2F; #65535</span><br><span class="line">   0x0000aaaaaaaab014 &lt;+36&gt;:	cmp	w1, w0</span><br><span class="line">   0x0000aaaaaaaab018 &lt;+40&gt;:	b.ne	0xaaaaaaaab070 &lt;__static_initialization_and_destruction_0(int, int)+128&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">   0x0000aaaaaaaab01c &lt;+44&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab020 &lt;+48&gt;:	add	x0, x0, #0x20</span><br><span class="line">   0x0000aaaaaaaab024 &lt;+52&gt;:	bl	0xaaaaaaaaad40 &lt;_ZNSt8ios_base4InitC1Ev@plt&gt;</span><br><span class="line">   0x0000aaaaaaaab028 &lt;+56&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab02c &lt;+60&gt;:	add	x2, x0, #0x8</span><br><span class="line">   0x0000aaaaaaaab030 &lt;+64&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab034 &lt;+68&gt;:	add	x1, x0, #0x20</span><br><span class="line">   0x0000aaaaaaaab038 &lt;+72&gt;:	adrp	x0, 0xaaaaaaabb000</span><br><span class="line">   0x0000aaaaaaaab03c &lt;+76&gt;:	ldr	x0, [x0, #4088]</span><br><span class="line">   0x0000aaaaaaaab040 &lt;+80&gt;:	bl	0xaaaaaaaaad30 &lt;__cxa_atexit@plt&gt;</span><br><span class="line">   0x0000aaaaaaaab044 &lt;+84&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab048 &lt;+88&gt;:	add	x0, x0, #0x18</span><br><span class="line">   0x0000aaaaaaaab04c &lt;+92&gt;:	mov	w1, #0x4                   	&#x2F;&#x2F; #4</span><br><span class="line">   0x0000aaaaaaaab050 &lt;+96&gt;:	bl	0xaaaaaaaab098 &lt;Base::Base(int)&gt;</span><br><span class="line">&#x3D;&gt; 0x0000aaaaaaaab054 &lt;+100&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab058 &lt;+104&gt;:	add	x2, x0, #0x8</span><br><span class="line">   0x0000aaaaaaaab05c &lt;+108&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab060 &lt;+112&gt;:	add	x1, x0, #0x18</span><br><span class="line">   0x0000aaaaaaaab064 &lt;+116&gt;:	adrp	x0, 0xaaaaaaaab000 &lt;__static_initialization_and_destruction_0(int, int)+16&gt;</span><br><span class="line">   0x0000aaaaaaaab068 &lt;+120&gt;:	add	x0, x0, #0xbc</span><br><span class="line">   0x0000aaaaaaaab06c &lt;+124&gt;:	bl	0xaaaaaaaaad30 &lt;__cxa_atexit@plt&gt;</span><br><span class="line">   0x0000aaaaaaaab070 &lt;+128&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab074 &lt;+132&gt;:	ldp	x29, x30, [sp], #32</span><br><span class="line">   0x0000aaaaaaaab078 &lt;+136&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p><strong>全局对象的构造函数调用</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaab044 &lt;+84&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">0x0000aaaaaaaab048 &lt;+88&gt;:	add	x0, x0, #0x18</span><br><span class="line">0x0000aaaaaaaab04c &lt;+92&gt;:	mov	w1, #0x4                   	&#x2F;&#x2F; #4</span><br><span class="line">0x0000aaaaaaaab050 &lt;+96&gt;:	bl	0xaaaaaaaab098 &lt;Base::Base(int)&gt;</span><br></pre></td></tr></table></figure>
+
+<p>传给构造函数的参数如下</p>
+<ul>
+<li>第1个参数是全局对象的地址x0 = 0xaaaaaaabc018</li>
+<li>第2个参数是w1 = 4</li>
+</ul>
+<p><strong>全局对象的析构函数注册</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">&#x3D;&gt; 0x0000aaaaaaaab054 &lt;+100&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab058 &lt;+104&gt;:	add	x2, x0, #0x8</span><br><span class="line">   0x0000aaaaaaaab05c &lt;+108&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab060 &lt;+112&gt;:	add	x1, x0, #0x18</span><br><span class="line">   0x0000aaaaaaaab064 &lt;+116&gt;:	adrp	x0, 0xaaaaaaaab000 &lt;__static_initialization_and_destruction_0(int, int)+16&gt;</span><br><span class="line">   0x0000aaaaaaaab068 &lt;+120&gt;:	add	x0, x0, #0xbc</span><br><span class="line">   0x0000aaaaaaaab06c &lt;+124&gt;:	bl	0xaaaaaaaaad30 &lt;__cxa_atexit@plt&gt;</span><br></pre></td></tr></table></figure>
+
+<p>和之前分析的局部静态对象类似，这里调用__cxa_atexit()注册全局对象的析构函数</p>
+<ul>
+<li>第1个参数x0 = 0x0000aaaaaaaab0bc是Base::~Base()</li>
+<li>第2个参数x1 = 0xaaaaaaabc018是全局对象的地址</li>
+<li>第3个参数x2 = 0xaaaaaaabc008是dso handler</li>
+</ul>
+<h3 id="2-3-析构"><a href="#2-3-析构" class="headerlink" title="2.3 析构"></a>2.3 析构</h3><p>全局对象的析构函数调用堆栈如下:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">(gdb) bt</span><br><span class="line">#0  Base::~Base (this&#x3D;0xaaaaaaabc018 &lt;global_obj&gt;, __in_chrg&#x3D;&lt;optimized out&gt;) at &#x2F;home&#x2F;timzhang&#x2F;project&#x2F;github&#x2F;dumphex&#x2F;cppTestSuite&#x2F;src&#x2F;objects.cc:9</span><br><span class="line">#1  0x0000fffff7d19e34 in __run_exit_handlers (status&#x3D;0, listp&#x3D;0xfffff7e385a0 &lt;__exit_funcs&gt;, run_list_atexit&#x3D;255, run_list_atexit@entry&#x3D;true, run_dtors&#x3D;run_dtors@entry&#x3D;true) at exit.c:108</span><br><span class="line">#2  0x0000fffff7d19f6c in __GI_exit (status&#x3D;&lt;optimized out&gt;) at exit.c:139</span><br><span class="line">#3  0x0000fffff7d056e4 in __libc_start_main (main&#x3D;0x0, argc&#x3D;0, argv&#x3D;0x0, init&#x3D;&lt;optimized out&gt;, fini&#x3D;&lt;optimized out&gt;, rtld_fini&#x3D;&lt;optimized out&gt;, stack_end&#x3D;&lt;optimized out&gt;) at ..&#x2F;csu&#x2F;libc-start.c:344</span><br><span class="line">#4  0x0000aaaaaaaaadb4 in _start ()</span><br><span class="line">Backtrace stopped: previous frame identical to this frame (corrupt stack?)</span><br></pre></td></tr></table></figure>
+<p>全局对象的析构和之前分析的局部静态对象的析构类似， 都是在程序退出调用exit()时触发析构函数的调用。</p>
+<h2 id="3-总结"><a href="#3-总结" class="headerlink" title="3. 总结"></a>3. 总结</h2><ul>
+<li>全局对象的构造发生在main()之前的__libc_csu_init(), 该函数将调用每个编译单元生成的特殊函数，这些特殊函数调用全局对象的构造函数并注册其析构函数</li>
+<li>全局对象的析构发生在main()之后的exit(), 调用前面注册的析构函数</li>
+</ul>
+<hr>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg" alt="程序员自我修养"></p>
+<center>
+程序员自我修养(ID: dumphex)
+</center>
+
+<hr>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div>坚持技术原创，感谢您的支持！</div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpg" alt="dumphex 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpg" alt="dumphex 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>dumphex
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://dumphex.github.io/2020/03/15/global-object/" title="c++的全局对象">https://dumphex.github.io/2020/03/15/global-object/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fa fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/run-exit-handlers/" rel="tag"># __run_exit_handlers</a>
+              <a href="/tags/global-object/" rel="tag"># global object</a>
+              <a href="/tags/start/" rel="tag"># _start</a>
+              <a href="/tags/libc-start-main/" rel="tag"># __libc_start_main</a>
+              <a href="/tags/libc-csu-init/" rel="tag"># __libc_csu_init</a>
+              <a href="/tags/static-initialization-and-destruction-0/" rel="tag"># __static_initialization_and_destruction_0</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/03/09/local-static-object/" rel="prev" title="C++中的局部静态对象">
+      <i class="fa fa-chevron-left"></i> C++中的局部静态对象
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let activeClass = CONFIG.comments.activeClass;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-测试环境"><span class="nav-text">1. 测试环境</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-调试分析"><span class="nav-text">2. 调试分析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-测试源码"><span class="nav-text">2.1 测试源码</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-构造"><span class="nav-text">2.2 构造</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-1-start"><span class="nav-text">2.2.1 _start</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-2-libc-start-main"><span class="nav-text">2.2.2 __libc_start_main</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-3-libc-csu-init"><span class="nav-text">2.2.3 __libc_csu_init</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-4-GLOBAL-sub-I-Z5stackv"><span class="nav-text">2.2.4 _GLOBAL__sub_I__Z5stackv</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-5-static-initialization-and-destruction-0"><span class="nav-text">2.2.5 __static_initialization_and_destruction_0</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-3-析构"><span class="nav-text">2.3 析构</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-总结"><span class="nav-text">3. 总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="dumphex"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">dumphex</p>
+  <div class="site-description" itemprop="description">日拱一卒，功不唐捐。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">8</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">23</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/dumphex" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;dumphex" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/3151a9dcd169" title="简书 → https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;3151a9dcd169" rel="noopener" target="_blank"><i class="fa fa-fw fa-book"></i>简书</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/images/programmer_qrcode.jpg" title="Wechat → images&#x2F;programmer_qrcode.jpg"><i class="fa fa-fw fa-wechat"></i>Wechat</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/dumphex@163.com" title="E-Mail → dumphex@163.com"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">dumphex</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  </div>
+  <span class="post-meta-divider">|</span>
+  <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.7.1
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+  <script>
+    (function(){
+      var bp = document.createElement('script');
+      var curProtocol = window.location.protocol.split(':')[0];
+      bp.src = (curProtocol === 'https') ? 'https://zz.bdstatic.com/linksubmit/push.js' : 'http://push.zhanzhang.baidu.com/push.js';
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(bp, s);
+    })();
+  </script>
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
