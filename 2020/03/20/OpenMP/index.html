@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"dumphex.github.io","root":"/","scheme":"Gemini","version":"7.7.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="整理一下以前使用过的OpenMP">
+<meta property="og:type" content="article">
+<meta property="og:title" content="OpenMP">
+<meta property="og:url" content="https://dumphex.github.io/2020/03/20/OpenMP/index.html">
+<meta property="og:site_name" content="程序员自我修养">
+<meta property="og:description" content="整理一下以前使用过的OpenMP">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gcygax65bqj318g0ii409.jpg">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+<meta property="article:published_time" content="2020-03-20T02:50:36.000Z">
+<meta property="article:modified_time" content="2020-03-20T03:15:49.686Z">
+<meta property="article:author" content="dumphex">
+<meta property="article:tag" content="Performance">
+<meta property="article:tag" content="OpenMP">
+<meta property="article:tag" content="omp">
+<meta property="article:tag" content="GOMP_parallel">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gcygax65bqj318g0ii409.jpg">
+
+<link rel="canonical" href="https://dumphex.github.io/2020/03/20/OpenMP/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true
+  };
+</script>
+
+  <title>OpenMP | 程序员自我修养</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">程序员自我修养</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-sitemap">
+
+    <a href="/sitemap.xml" rel="section"><i class="fa fa-fw fa-sitemap"></i>站点地图</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+
+</nav>
+  <div class="site-search">
+    <div class="popup search-popup">
+    <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocorrect="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result"></div>
+
+</div>
+<div class="search-pop-overlay"></div>
+
+  </div>
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://dumphex.github.io/2020/03/20/OpenMP/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="dumphex">
+      <meta itemprop="description" content="日拱一卒，功不唐捐。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="程序员自我修养">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          OpenMP
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-03-20 10:50:36 / 修改时间：11:15:49" itemprop="dateCreated datePublished" datetime="2020-03-20T10:50:36+08:00">2020-03-20</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Performance/" itemprop="url" rel="index">
+                    <span itemprop="name">Performance</span>
+                  </a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>整理一下以前使用过的OpenMP</p>
+<a id="more"></a>
+
+<h2 id="1-前言"><a href="#1-前言" class="headerlink" title="1. 前言"></a>1. 前言</h2><h3 id="1-1-基本功能"><a href="#1-1-基本功能" class="headerlink" title="1.1 基本功能"></a>1.1 基本功能</h3><ul>
+<li><a href="https://zh.wikipedia.org/wiki/OpenMP" target="_blank" rel="noopener">OpenMP(Open Multi-Processing)</a> </li>
+<li>本质是利用<strong>多线程</strong>加速程序执行</li>
+<li>支持C/C++/Fortran</li>
+<li>支持icc/gcc等编译器</li>
+</ul>
+<h3 id="1-2-流程"><a href="#1-2-流程" class="headerlink" title="1.2 流程"></a>1.2 流程</h3><p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gcygax65bqj318g0ii409.jpg" alt="https://zh.wikipedia.org/wiki/OpenMP)"></p>
+<ul>
+<li>开发人员在代码中插入#pragma omp指令语句</li>
+<li>编译器生成多线程代码</li>
+<li>运行时多线程加速</li>
+</ul>
+<blockquote>
+<p>注: 启动多线程后， 这几个线程不会退出， 将会一直存在.</p>
+</blockquote>
+<h3 id="1-3-语法"><a href="#1-3-语法" class="headerlink" title="1.3 语法"></a>1.3 语法</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">#pragma omp &lt;directive&gt; [clause[[,] clause] ...]</span><br></pre></td></tr></table></figure>
+
+<p><strong>directive</strong></p>
+<ul>
+<li>paralell: 后续代码块将被多线程分别执行一遍</li>
+<li>for: 将循环拆分(需要确保循环之间没有数据依赖)<blockquote>
+<p>parallel for: 将循环拆分到多个线程并行执行</p>
+</blockquote>
+</li>
+<li>master: 下面语句块由master线程执行</li>
+<li>single: 下面语句块由单个线程执行</li>
+<li>barrier: 同步所有并行线程</li>
+<li>… …</li>
+</ul>
+<p><strong>clause</strong></p>
+<ul>
+<li>num_threads: 设置并行线程个数</li>
+<li>private: 设置变量为线程私有的</li>
+<li>shared: 设置变量为共享的， 需要注意同步</li>
+<li>reduction: 指定变量先是线程私有的， 最后并行结束后归约到一起</li>
+<li>… …</li>
+</ul>
+<h3 id="1-4-APIs"><a href="#1-4-APIs" class="headerlink" title="1.4 APIs"></a>1.4 APIs</h3><ul>
+<li>omp_set_num_threads(): 设置并行线程个数</li>
+<li>omp_get_num_threads(): 获取并行线程个数</li>
+<li>omp_get_thread_num(): 获取线程id(master thread为0, 其他线程为1, 2, …)</li>
+<li>… …</li>
+</ul>
+<h3 id="1-5-编译"><a href="#1-5-编译" class="headerlink" title="1.5 编译"></a>1.5 编译</h3><ul>
+<li>头文件: omp.h </li>
+<li>gcc编译选项: -fopenmp</li>
+<li>动态库: libgomp.so.1</li>
+</ul>
+<h2 id="2-调试分析"><a href="#2-调试分析" class="headerlink" title="2. 调试分析"></a>2. 调试分析</h2><h3 id="2-1-测试环境"><a href="#2-1-测试环境" class="headerlink" title="2.1 测试环境"></a>2.1 测试环境</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">$ uname -a</span><br><span class="line">Linux ubuntu18arm64 4.15.0-76-generic #86-Ubuntu SMP Fri Jan 17 17:25:58 UTC 2020 aarch64 aarch64 aarch64 GNU&#x2F;Linux</span><br><span class="line"></span><br><span class="line">$ g++ -v</span><br><span class="line">Using built-in specs.</span><br><span class="line">COLLECT_GCC&#x3D;g++</span><br><span class="line">COLLECT_LTO_WRAPPER&#x3D;&#x2F;usr&#x2F;lib&#x2F;gcc&#x2F;aarch64-linux-gnu&#x2F;7&#x2F;lto-wrapper</span><br><span class="line">Target: aarch64-linux-gnu</span><br><span class="line">Configured with: ..&#x2F;src&#x2F;configure -v --with-pkgversion&#x3D;&#39;Ubuntu&#x2F;Linaro 7.4.0-1ubuntu1~18.04.1&#39; --with-bugurl&#x3D;file:&#x2F;&#x2F;&#x2F;usr&#x2F;share&#x2F;doc&#x2F;gcc-7&#x2F;README.Bugs --enable-languages&#x3D;c,ada,c++,go,d,fortran,objc,obj-c++ --prefix&#x3D;&#x2F;usr --with-gcc-major-version-only --program-suffix&#x3D;-7 --program-prefix&#x3D;aarch64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir&#x3D;&#x2F;usr&#x2F;lib --without-included-gettext --enable-threads&#x3D;posix --libdir&#x3D;&#x2F;usr&#x2F;lib --enable-nls --with-sysroot&#x3D;&#x2F; --enable-clocale&#x3D;gnu --enable-libstdcxx-debug --enable-libstdcxx-time&#x3D;yes --with-default-libstdcxx-abi&#x3D;new --enable-gnu-unique-object --disable-libquadmath --disable-libquadmath-support --enable-plugin --enable-default-pie --with-system-zlib --enable-multiarch --enable-fix-cortex-a53-843419 --disable-werror --enable-checking&#x3D;release --build&#x3D;aarch64-linux-gnu --host&#x3D;aarch64-linux-gnu --target&#x3D;aarch64-linux-gnu</span><br><span class="line">Thread model: posix</span><br><span class="line">gcc version 7.4.0 (Ubuntu&#x2F;Linaro 7.4.0-1ubuntu1~18.04.1)</span><br></pre></td></tr></table></figure>
+<h3 id="2-2-测试源码"><a href="#2-2-测试源码" class="headerlink" title="2.2 测试源码"></a>2.2 测试源码</h3><p><strong>CPP测试代码</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">float</span> <span class="title">CPP::dotProduct</span><span class="params">(<span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">float</span>&gt; &amp;v1,</span></span></span><br><span class="line"><span class="function"><span class="params">                      <span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">float</span>&gt; &amp;v2)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">size_t</span> size = v1.size();</span><br><span class="line">  <span class="keyword">float</span> mac = <span class="number">0.0</span>;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">for</span> (<span class="keyword">size_t</span> i = <span class="number">0</span>; i &lt; size; i++) &#123;</span><br><span class="line">    mac += v1[i] * v2[i];</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> mac;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>OpenMP测试代码</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">float</span> <span class="title">OpenMP::dotProduct</span><span class="params">(<span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">float</span>&gt; &amp;v1,</span></span></span><br><span class="line"><span class="function"><span class="params">                         <span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">float</span>&gt; &amp;v2)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">int</span> size = v1.size();</span><br><span class="line">  <span class="keyword">float</span> mac = <span class="number">0.0</span>;</span><br><span class="line"></span><br><span class="line">  <span class="meta">#<span class="meta-keyword">pragma</span> omp parallel for reduction(+:mac)</span></span><br><span class="line">  <span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; size; i++) &#123;</span><br><span class="line">    mac += v1[i] * v2[i];</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> mac;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-3-测试结果"><a href="#2-3-测试结果" class="headerlink" title="2.3 测试结果"></a>2.3 测试结果</h3><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./out/bin/dotProduct </span></span><br><span class="line">size = 256</span><br><span class="line">CPP took 3267 ms</span><br><span class="line">OpenMP took 6832 ms</span><br><span class="line"></span><br><span class="line">size = 512</span><br><span class="line">CPP took 5650 ms</span><br><span class="line">OpenMP took 6286 ms</span><br><span class="line"></span><br><span class="line">size = 1024</span><br><span class="line">CPP took 11292 ms</span><br><span class="line">OpenMP took 7374 ms</span><br><span class="line"></span><br><span class="line">size = 2048</span><br><span class="line">CPP took 22476 ms</span><br><span class="line">OpenMP took 9762 ms</span><br><span class="line"></span><br><span class="line">size = 4096</span><br><span class="line">CPP took 45137 ms</span><br><span class="line">OpenMP took 14522 ms</span><br></pre></td></tr></table></figure>
+
+<p>在该测试中可以观察到，只有当计算量超过size = 1024后， 使用OpenMP获取的收益才超过本身带来的开销。</p>
+<h3 id="2-4-OpenMP-dotProduct"><a href="#2-4-OpenMP-dotProduct" class="headerlink" title="2.4 OpenMP::dotProduct()"></a>2.4 OpenMP::dotProduct()</h3><p>为了弄清楚OpenMP的实现原理，我们从OpenMP::dotProduct()入手, 看看编译器做了哪些操作。</p>
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas</span><br><span class="line">Dump of assembler code for function OpenMP::dotProduct(std::vector&lt;float, std::allocator&lt;float&gt; &gt; const&amp;, std::vector&lt;float, std::allocator&lt;float&gt; &gt; const&amp;):</span><br><span class="line">   0x0000aaaaaaab5d78 &lt;+0&gt;:	stp	x29, x30, [sp, #-96]!</span><br><span class="line">   0x0000aaaaaaab5d7c &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaab5d80 &lt;+8&gt;:	str	x0, [x29, #40]</span><br><span class="line">   0x0000aaaaaaab5d84 &lt;+12&gt;:	str	x1, [x29, #32]</span><br><span class="line">   0x0000aaaaaaab5d88 &lt;+16&gt;:	str	x2, [x29, #24]</span><br><span class="line">&#x3D;&gt; 0x0000aaaaaaab5d8c &lt;+20&gt;:	adrp	x0, 0xaaaaaaac9000</span><br><span class="line">   0x0000aaaaaaab5d90 &lt;+24&gt;:	ldr	x0, [x0, #3992]</span><br><span class="line">   0x0000aaaaaaab5d94 &lt;+28&gt;:	ldr	x1, [x0]</span><br><span class="line">   0x0000aaaaaaab5d98 &lt;+32&gt;:	str	x1, [x29, #88]</span><br><span class="line">   0x0000aaaaaaab5d9c &lt;+36&gt;:	mov	x1, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">   0x0000aaaaaaab5da0 &lt;+40&gt;:	ldr	x0, [x29, #32]</span><br><span class="line">   0x0000aaaaaaab5da4 &lt;+44&gt;:	bl	0xaaaaaaab5190 &lt;std::vector&lt;float, std::allocator&lt;float&gt; &gt;::size() const&gt;</span><br><span class="line">   0x0000aaaaaaab5da8 &lt;+48&gt;:	str	w0, [x29, #56]</span><br><span class="line">   0x0000aaaaaaab5dac &lt;+52&gt;:	str	wzr, [x29, #60]</span><br><span class="line">   0x0000aaaaaaab5db0 &lt;+56&gt;:	ldr	s0, [x29, #60]</span><br><span class="line">   0x0000aaaaaaab5db4 &lt;+60&gt;:	str	s0, [x29, #84]</span><br><span class="line">   0x0000aaaaaaab5db8 &lt;+64&gt;:	ldr	w0, [x29, #56]</span><br><span class="line">   0x0000aaaaaaab5dbc &lt;+68&gt;:	str	w0, [x29, #80]</span><br><span class="line">   0x0000aaaaaaab5dc0 &lt;+72&gt;:	ldr	x0, [x29, #32]</span><br><span class="line">   0x0000aaaaaaab5dc4 &lt;+76&gt;:	str	x0, [x29, #64]</span><br><span class="line">   0x0000aaaaaaab5dc8 &lt;+80&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaab5dcc &lt;+84&gt;:	str	x0, [x29, #72]</span><br><span class="line">   0x0000aaaaaaab5dd0 &lt;+88&gt;:	add	x1, x29, #0x40</span><br><span class="line">   0x0000aaaaaaab5dd4 &lt;+92&gt;:	adrp	x0, 0xaaaaaaab6000 &lt;NEONIntrinsic::dotProduct(std::vector&lt;float, std::allocator&lt;float&gt; &gt; const&amp;, std::vector&lt;float, std::allocator&lt;float&gt; &gt; const&amp;)+484&gt;</span><br><span class="line">   0x0000aaaaaaab5dd8 &lt;+96&gt;:	add	x0, x0, #0xa8</span><br><span class="line">   0x0000aaaaaaab5ddc &lt;+100&gt;:	mov	w3, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">   0x0000aaaaaaab5de0 &lt;+104&gt;:	mov	w2, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">   0x0000aaaaaaab5de4 &lt;+108&gt;:	bl	0xaaaaaaab26b0 &lt;GOMP_parallel@plt&gt;</span><br><span class="line">   0x0000aaaaaaab5de8 &lt;+112&gt;:	ldr	s0, [x29, #84]</span><br><span class="line">   0x0000aaaaaaab5dec &lt;+116&gt;:	str	s0, [x29, #60]</span><br><span class="line">   0x0000aaaaaaab5df0 &lt;+120&gt;:	ldr	s0, [x29, #60]</span><br><span class="line">   0x0000aaaaaaab5df4 &lt;+124&gt;:	adrp	x0, 0xaaaaaaac9000</span><br><span class="line">   0x0000aaaaaaab5df8 &lt;+128&gt;:	ldr	x0, [x0, #3992]</span><br><span class="line">   0x0000aaaaaaab5dfc &lt;+132&gt;:	ldr	x1, [x29, #88]</span><br><span class="line">   0x0000aaaaaaab5e00 &lt;+136&gt;:	ldr	x0, [x0]</span><br><span class="line">   0x0000aaaaaaab5e04 &lt;+140&gt;:	eor	x0, x1, x0</span><br><span class="line">   0x0000aaaaaaab5e08 &lt;+144&gt;:	cmp	x0, #0x0</span><br><span class="line">   0x0000aaaaaaab5e0c &lt;+148&gt;:	b.eq	0xaaaaaaab5e14 &lt;OpenMP::dotProduct(std::vector&lt;float, std::allocator&lt;float&gt; &gt; const&amp;, std::vector&lt;float, std::allocator&lt;float&gt; &gt; const&amp;)+156&gt;  &#x2F;&#x2F; b.none</span><br><span class="line">   0x0000aaaaaaab5e10 &lt;+152&gt;:	bl	0xaaaaaaab2570 &lt;__stack_chk_fail@plt&gt;</span><br><span class="line">   0x0000aaaaaaab5e14 &lt;+156&gt;:	ldp	x29, x30, [sp], #96</span><br><span class="line">   0x0000aaaaaaab5e18 &lt;+160&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p>调用omp相关代码如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaab5dd0 &lt;+88&gt;:	add	x1, x29, #0x40</span><br><span class="line">0x0000aaaaaaab5dd4 &lt;+92&gt;:	adrp	x0, 0xaaaaaaab6000 &lt;NEONIntrinsic::dotProduct(std::vector&lt;float, std::allocator&lt;float&gt; &gt; const&amp;, std::vector&lt;float, std::allocator&lt;float&gt; &gt; const&amp;)+484&gt;</span><br><span class="line">0x0000aaaaaaab5dd8 &lt;+96&gt;:	add	x0, x0, #0xa8</span><br><span class="line">0x0000aaaaaaab5ddc &lt;+100&gt;:	mov	w3, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">0x0000aaaaaaab5de0 &lt;+104&gt;:	mov	w2, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">0x0000aaaaaaab5de4 &lt;+108&gt;:	bl	0xaaaaaaab26b0 &lt;GOMP_parallel@plt&gt;</span><br></pre></td></tr></table></figure>
+
+<p>从反汇编看，调用OMP_parallel()函数传入了4个参数</p>
+<ul>
+<li>x0 = 0xaaaaaaab6000 + 0xa8 = 0x0000aaaaaaab60a8</li>
+<li>x1为[fp + 0x40], 里面存放v1, 后面紧跟着存放v2/size/mac等参数</li>
+<li>x2为0</li>
+<li>x3为0</li>
+</ul>
+<h3 id="2-5-GOMP-parallel"><a href="#2-5-GOMP-parallel" class="headerlink" title="2.5 GOMP_parallel()"></a>2.5 GOMP_parallel()</h3><blockquote>
+<p>源文件: gcc/libgomp/parallel.c</p>
+</blockquote>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">void</span><br><span class="line">GOMP_parallel (void (*fn) (void *), void *data, unsigned num_threads, unsigned int flags)</span><br><span class="line">&#123;</span><br><span class="line">  num_threads &#x3D; gomp_resolve_num_threads (num_threads, 0); </span><br><span class="line">  gomp_team_start (fn, data, num_threads, flags, gomp_new_team (num_threads));</span><br><span class="line">  fn (data);</span><br><span class="line">  ialias_call (GOMP_parallel_end) (); </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>主要操作如下</p>
+<ul>
+<li>gomp_resolve_num_threads(): 获取指定的线程个数或默认的线程个数</li>
+<li>gomp_team_start(): 启动线程池(num_threads - 1个线程)</li>
+<li>fn(): master thread调用fn()</li>
+<li>GOMP_parallel_end(): omp调用结束</li>
+</ul>
+<p>可以看到，OpenMP的每个线程都调用到了fn()函数, 这个函数就是前面提到的x0 = 0x0000aaaaaaab60a8</p>
+<h3 id="2-6-clone-omp-fn-0"><a href="#2-6-clone-omp-fn-0" class="headerlink" title="2.6 clone ._omp_fn.0"></a>2.6 clone ._omp_fn.0</h3><p>这个函数是编译器根据OpenMP::dotProduct()修改生成的clone函数</p>
+<p>先反汇编看一下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br></pre></td><td class="code"><pre><span class="line">(gdb) disas 0x0000aaaaaaab60a8</span><br><span class="line">Dump of assembler code for function _ZN6OpenMP10dotProductERKSt6vectorIfSaIfEES4_._omp_fn.0(void):</span><br><span class="line">   0x0000aaaaaaab60a8 &lt;+0&gt;:	stp	x29, x30, [sp, #-80]!</span><br><span class="line">   0x0000aaaaaaab60ac &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaab60b0 &lt;+8&gt;:	stp	x19, x20, [sp, #16]</span><br><span class="line">   0x0000aaaaaaab60b4 &lt;+12&gt;:	str	d8, [sp, #32]</span><br><span class="line">   0x0000aaaaaaab60b8 &lt;+16&gt;:	str	x0, [x29, #56]</span><br><span class="line">   0x0000aaaaaaab60bc &lt;+20&gt;:	str	wzr, [x29, #68]</span><br><span class="line">   0x0000aaaaaaab60c0 &lt;+24&gt;:	ldr	x0, [x29, #56]</span><br><span class="line">   0x0000aaaaaaab60c4 &lt;+28&gt;:	ldr	w0, [x0, #16]</span><br><span class="line">   0x0000aaaaaaab60c8 &lt;+32&gt;:	str	w0, [x29, #76]</span><br><span class="line">   0x0000aaaaaaab60cc &lt;+36&gt;:	ldr	w19, [x29, #76]</span><br><span class="line">   0x0000aaaaaaab60d0 &lt;+40&gt;:	bl	0xaaaaaaab2750 &lt;omp_get_num_threads@plt&gt;</span><br><span class="line">   0x0000aaaaaaab60d4 &lt;+44&gt;:	mov	w20, w0</span><br><span class="line">   0x0000aaaaaaab60d8 &lt;+48&gt;:	bl	0xaaaaaaab26d0 &lt;omp_get_thread_num@plt&gt;</span><br><span class="line">   0x0000aaaaaaab60dc &lt;+52&gt;:	mov	w2, w0</span><br><span class="line">   0x0000aaaaaaab60e0 &lt;+56&gt;:	sdiv	w0, w19, w20</span><br><span class="line">   0x0000aaaaaaab60e4 &lt;+60&gt;:	sdiv	w1, w19, w20</span><br><span class="line">   0x0000aaaaaaab60e8 &lt;+64&gt;:	mul	w1, w1, w20</span><br><span class="line">   0x0000aaaaaaab60ec &lt;+68&gt;:	sub	w1, w19, w1</span><br><span class="line">   0x0000aaaaaaab60f0 &lt;+72&gt;:	cmp	w2, w1</span><br><span class="line">   0x0000aaaaaaab60f4 &lt;+76&gt;:	b.lt	0xaaaaaaab61ac &lt;_ZN6OpenMP10dotProductERKSt6vectorIfSaIfEES4_._omp_fn.0(void)+260&gt;  &#x2F;&#x2F; b.tstop</span><br><span class="line">   0x0000aaaaaaab60f8 &lt;+80&gt;:	mul	w2, w0, w2</span><br><span class="line">   0x0000aaaaaaab60fc &lt;+84&gt;:	add	w1, w2, w1</span><br><span class="line">   0x0000aaaaaaab6100 &lt;+88&gt;:	add	w19, w1, w0</span><br><span class="line">   0x0000aaaaaaab6104 &lt;+92&gt;:	cmp	w1, w19</span><br><span class="line">   0x0000aaaaaaab6108 &lt;+96&gt;:	b.ge	0xaaaaaaab6160 &lt;_ZN6OpenMP10dotProductERKSt6vectorIfSaIfEES4_._omp_fn.0(void)+184&gt;  &#x2F;&#x2F; b.tcont</span><br><span class="line">   0x0000aaaaaaab610c &lt;+100&gt;:	str	w1, [x29, #72]</span><br><span class="line">   0x0000aaaaaaab6110 &lt;+104&gt;:	ldrsw	x1, [x29, #72]</span><br><span class="line">   0x0000aaaaaaab6114 &lt;+108&gt;:	ldr	x0, [x29, #56]</span><br><span class="line">   0x0000aaaaaaab6118 &lt;+112&gt;:	ldr	x0, [x0]</span><br><span class="line">   0x0000aaaaaaab611c &lt;+116&gt;:	bl	0xaaaaaaab6370 &lt;std::vector&lt;float, std::allocator&lt;float&gt; &gt;::operator[](unsigned long) const&gt;</span><br><span class="line">   0x0000aaaaaaab6120 &lt;+120&gt;:	ldr	s8, [x0]</span><br><span class="line">   0x0000aaaaaaab6124 &lt;+124&gt;:	ldrsw	x1, [x29, #72]</span><br><span class="line">   0x0000aaaaaaab6128 &lt;+128&gt;:	ldr	x0, [x29, #56]</span><br><span class="line">   0x0000aaaaaaab612c &lt;+132&gt;:	ldr	x0, [x0, #8]</span><br><span class="line">   0x0000aaaaaaab6130 &lt;+136&gt;:	bl	0xaaaaaaab6370 &lt;std::vector&lt;float, std::allocator&lt;float&gt; &gt;::operator[](unsigned long) const&gt;</span><br><span class="line">   0x0000aaaaaaab6134 &lt;+140&gt;:	ldr	s0, [x0]</span><br><span class="line">   0x0000aaaaaaab6138 &lt;+144&gt;:	fmul	s0, s8, s0</span><br><span class="line">   0x0000aaaaaaab613c &lt;+148&gt;:	ldr	s1, [x29, #68]</span><br><span class="line">   0x0000aaaaaaab6140 &lt;+152&gt;:	fadd	s0, s1, s0</span><br><span class="line">   0x0000aaaaaaab6144 &lt;+156&gt;:	str	s0, [x29, #68]</span><br><span class="line">   0x0000aaaaaaab6148 &lt;+160&gt;:	ldr	w0, [x29, #72]</span><br><span class="line">   0x0000aaaaaaab614c &lt;+164&gt;:	add	w0, w0, #0x1</span><br><span class="line">   0x0000aaaaaaab6150 &lt;+168&gt;:	str	w0, [x29, #72]</span><br><span class="line">   0x0000aaaaaaab6154 &lt;+172&gt;:	ldr	w0, [x29, #72]</span><br><span class="line">   0x0000aaaaaaab6158 &lt;+176&gt;:	cmp	w0, w19</span><br><span class="line">   0x0000aaaaaaab615c &lt;+180&gt;:	b.lt	0xaaaaaaab6110 &lt;_ZN6OpenMP10dotProductERKSt6vectorIfSaIfEES4_._omp_fn.0+104&gt;  &#x2F;&#x2F; b.tstop</span><br><span class="line">   0x0000aaaaaaab6160 &lt;+184&gt;:	ldr	x0, [x29, #56]</span><br><span class="line">   0x0000aaaaaaab6164 &lt;+188&gt;:	add	x0, x0, #0x14</span><br><span class="line">   0x0000aaaaaaab6168 &lt;+192&gt;:	mov	x1, x0</span><br><span class="line">   0x0000aaaaaaab616c &lt;+196&gt;:	ldr	w0, [x1]</span><br><span class="line">   0x0000aaaaaaab6170 &lt;+200&gt;:	fmov	s1, w0</span><br><span class="line">   0x0000aaaaaaab6174 &lt;+204&gt;:	ldr	s0, [x29, #68]</span><br><span class="line">   0x0000aaaaaaab6178 &lt;+208&gt;:	fadd	s0, s1, s0</span><br><span class="line">   0x0000aaaaaaab617c &lt;+212&gt;:	fmov	w3, s0</span><br><span class="line">   0x0000aaaaaaab6180 &lt;+216&gt;:	ldxr	w2, [x1]</span><br><span class="line">   0x0000aaaaaaab6184 &lt;+220&gt;:	cmp	w2, w0</span><br><span class="line">   0x0000aaaaaaab6188 &lt;+224&gt;:	b.ne	0xaaaaaaab6194 &lt;_ZN6OpenMP10dotProductERKSt6vectorIfSaIfEES4_._omp_fn.0(void)+236&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">   0x0000aaaaaaab618c &lt;+228&gt;:	stlxr	w4, w3, [x1]</span><br><span class="line">   0x0000aaaaaaab6190 &lt;+232&gt;:	cbnz	w4, 0xaaaaaaab6180 &lt;_ZN6OpenMP10dotProductERKSt6vectorIfSaIfEES4_._omp_fn.0(void)+216&gt;</span><br><span class="line">   0x0000aaaaaaab6194 &lt;+236&gt;:	dmb	ish</span><br><span class="line">   0x0000aaaaaaab6198 &lt;+240&gt;:	mov	w3, w0</span><br><span class="line">   0x0000aaaaaaab619c &lt;+244&gt;:	mov	w0, w2</span><br><span class="line">   0x0000aaaaaaab61a0 &lt;+248&gt;:	cmp	w2, w3</span><br><span class="line">   0x0000aaaaaaab61a4 &lt;+252&gt;:	b.ne	0xaaaaaaab6170 &lt;_ZN6OpenMP10dotProductERKSt6vectorIfSaIfEES4_._omp_fn.0(void)+200&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">   0x0000aaaaaaab61a8 &lt;+256&gt;:	b	0xaaaaaaab61b8 &lt;_ZN6OpenMP10dotProductERKSt6vectorIfSaIfEES4_._omp_fn.0(void)+272&gt;</span><br><span class="line">   0x0000aaaaaaab61ac &lt;+260&gt;:	mov	w1, #0x0                   	&#x2F;&#x2F; #0</span><br><span class="line">   0x0000aaaaaaab61b0 &lt;+264&gt;:	add	w0, w0, #0x1</span><br><span class="line">   0x0000aaaaaaab61b4 &lt;+268&gt;:	b	0xaaaaaaab60f8 &lt;_ZN6OpenMP10dotProductERKSt6vectorIfSaIfEES4_._omp_fn.0+80&gt;</span><br><span class="line">   0x0000aaaaaaab61b8 &lt;+272&gt;:	ldp	x19, x20, [sp, #16]</span><br><span class="line">   0x0000aaaaaaab61bc &lt;+276&gt;:	ldr	d8, [sp, #32]</span><br><span class="line">   0x0000aaaaaaab61c0 &lt;+280&gt;:	ldp	x29, x30, [sp], #80</span><br><span class="line">   0x0000aaaaaaab61c4 &lt;+284&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p>主要操作如下</p>
+<ul>
+<li>根据for循环的循环次数/当前的线程个数/当前线程ID， 确定当前thread要完成的任务</li>
+<li>执行本线程分配的循环部分</li>
+<li>将计算结果写回mac(注意多线程之间的数据同步)</li>
+</ul>
+<h2 id="3-总结"><a href="#3-总结" class="headerlink" title="3. 总结"></a>3. 总结</h2><ul>
+<li>OpenMP利用多线程进行加速，但本身线程的启动也有开销，具体使用时需要tradeoff</li>
+<li>OpenMP使用时需要注意循环之间的依赖关系/数据竞争等，调试上不太方便</li>
+</ul>
+<hr>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg" alt="程序员自我修养"></p>
+<center>
+程序员自我修养(ID: dumphex)
+</center>
+
+<hr>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div>坚持技术原创，感谢您的支持！</div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpg" alt="dumphex 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpg" alt="dumphex 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>dumphex
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://dumphex.github.io/2020/03/20/OpenMP/" title="OpenMP">https://dumphex.github.io/2020/03/20/OpenMP/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fa fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Performance/" rel="tag"># Performance</a>
+              <a href="/tags/OpenMP/" rel="tag"># OpenMP</a>
+              <a href="/tags/omp/" rel="tag"># omp</a>
+              <a href="/tags/GOMP-parallel/" rel="tag"># GOMP_parallel</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/03/15/global-object/" rel="prev" title="C++的全局对象">
+      <i class="fa fa-chevron-left"></i> C++的全局对象
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let activeClass = CONFIG.comments.activeClass;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-前言"><span class="nav-text">1. 前言</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-基本功能"><span class="nav-text">1.1 基本功能</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-流程"><span class="nav-text">1.2 流程</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-语法"><span class="nav-text">1.3 语法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-APIs"><span class="nav-text">1.4 APIs</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-5-编译"><span class="nav-text">1.5 编译</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-调试分析"><span class="nav-text">2. 调试分析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-测试环境"><span class="nav-text">2.1 测试环境</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-测试源码"><span class="nav-text">2.2 测试源码</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-3-测试结果"><span class="nav-text">2.3 测试结果</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-4-OpenMP-dotProduct"><span class="nav-text">2.4 OpenMP::dotProduct()</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-5-GOMP-parallel"><span class="nav-text">2.5 GOMP_parallel()</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-6-clone-omp-fn-0"><span class="nav-text">2.6 clone ._omp_fn.0</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-总结"><span class="nav-text">3. 总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="dumphex"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">dumphex</p>
+  <div class="site-description" itemprop="description">日拱一卒，功不唐捐。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">9</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/dumphex" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;dumphex" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/3151a9dcd169" title="简书 → https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;3151a9dcd169" rel="noopener" target="_blank"><i class="fa fa-fw fa-book"></i>简书</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/images/programmer_qrcode.jpg" title="Wechat → images&#x2F;programmer_qrcode.jpg"><i class="fa fa-fw fa-wechat"></i>Wechat</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/dumphex@163.com" title="E-Mail → dumphex@163.com"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">dumphex</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  </div>
+  <span class="post-meta-divider">|</span>
+  <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.7.1
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+  <script>
+    (function(){
+      var bp = document.createElement('script');
+      var curProtocol = window.location.protocol.split(':')[0];
+      bp.src = (curProtocol === 'https') ? 'https://zz.bdstatic.com/linksubmit/push.js' : 'http://push.zhanzhang.baidu.com/push.js';
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(bp, s);
+    })();
+  </script>
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
