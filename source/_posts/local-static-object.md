@@ -1,5 +1,5 @@
 ---
-title: C++中的局部静态对象
+title: C++的局部静态对象
 date: 2020-03-09 10:49:18
 tags:
 - local static object

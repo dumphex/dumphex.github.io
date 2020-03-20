@@ -1,5 +1,5 @@
 ---
-title: C++中的栈对象与堆对象
+title: C++的栈对象与堆对象
 date: 2020-03-04 15:08:06
 tags:
 - stack object
