@@ -38,7 +38,7 @@ categories: Performance
 ```
 
 **directive**
-- paralell: 后续代码块将被多线程分别执行一遍
+- parallel: 后续代码块将被多线程分别执行一遍
 - for: 将循环拆分(需要确保循环之间没有数据依赖)
   > parallel for: 将循环拆分到多个线程并行执行
 - master: 下面语句块由master线程执行
