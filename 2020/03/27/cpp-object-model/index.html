@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"dumphex.github.io","root":"/","scheme":"Gemini","version":"7.7.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文分析了在不同场景下的C++对象模型">
+<meta property="og:type" content="article">
+<meta property="og:title" content="探索C++对象模型">
+<meta property="og:url" content="https://dumphex.github.io/2020/03/27/cpp-object-model/index.html">
+<meta property="og:site_name" content="程序员自我修养">
+<meta property="og:description" content="本文分析了在不同场景下的C++对象模型">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gcslxg2n3tj30f30c4glo.jpg">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+<meta property="article:published_time" content="2020-03-27T02:29:01.000Z">
+<meta property="article:modified_time" content="2020-03-27T02:54:00.317Z">
+<meta property="article:author" content="dumphex">
+<meta property="article:tag" content="object model">
+<meta property="article:tag" content="vptr">
+<meta property="article:tag" content="vtable">
+<meta property="article:tag" content="thunk">
+<meta property="article:tag" content="virtual inheritance">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gcslxg2n3tj30f30c4glo.jpg">
+
+<link rel="canonical" href="https://dumphex.github.io/2020/03/27/cpp-object-model/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true
+  };
+</script>
+
+  <title>探索C++对象模型 | 程序员自我修养</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">程序员自我修养</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-sitemap">
+
+    <a href="/sitemap.xml" rel="section"><i class="fa fa-fw fa-sitemap"></i>站点地图</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+
+</nav>
+  <div class="site-search">
+    <div class="popup search-popup">
+    <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocorrect="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result"></div>
+
+</div>
+<div class="search-pop-overlay"></div>
+
+  </div>
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://dumphex.github.io/2020/03/27/cpp-object-model/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="dumphex">
+      <meta itemprop="description" content="日拱一卒，功不唐捐。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="程序员自我修养">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          探索C++对象模型
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-03-27 10:29:01 / 修改时间：10:54:00" itemprop="dateCreated datePublished" datetime="2020-03-27T10:29:01+08:00">2020-03-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/C-C/" itemprop="url" rel="index">
+                    <span itemprop="name">C/C++</span>
+                  </a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文分析了在不同场景下的C++对象模型</p>
+<a id="more"></a>
+
+<h2 id="1-前言"><a href="#1-前言" class="headerlink" title="1. 前言"></a>1. 前言</h2><h3 id="1-1-测试环境"><a href="#1-1-测试环境" class="headerlink" title="1.1 测试环境"></a>1.1 测试环境</h3><ul>
+<li>Linux ubuntu18arm64 4.15.0-76-generic #86-Ubuntu SMP Fri Jan 17 17:25:58 UTC 2020 aarch64 aarch64 aarch64 GNU/Linux</li>
+<li>gcc version 7.4.0 (Ubuntu/Linaro 7.4.0-1ubuntu1~18.04.1)</li>
+<li>glibc 2.27</li>
+<li>C++11</li>
+</ul>
+<h3 id="1-2-测试代码"><a href="#1-2-测试代码" class="headerlink" title="1.2 测试代码"></a>1.2 测试代码</h3><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Base</span> &#123;</span></span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  Base(): m_base(<span class="number">1</span>) &#123;&#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">virtual</span> ~Base() &#123;</span><br><span class="line">    m_base = <span class="number">0</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">foo</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    m_base++;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">bar</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    m_base--;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="keyword">int</span> m_base;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Base1</span> :</span> <span class="keyword">public</span> Base &#123;</span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  Base1(): m_base1(<span class="number">21</span>) &#123;&#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">virtual</span> ~Base1() &#123;</span><br><span class="line">    m_base1 = <span class="number">0</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">foo</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    m_base1++;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="keyword">int</span> m_base1;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Base2</span> :</span> <span class="keyword">virtual</span> <span class="keyword">public</span> Base &#123;</span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  Base2(): m_base2(<span class="number">22</span>) &#123;&#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">virtual</span> ~Base2() &#123;</span><br><span class="line">    m_base2 = <span class="number">0</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">foo</span><span class="params">()</span> </span>&#123;</span><br><span class="line">   m_base2++;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="keyword">int</span> m_base2;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Base3</span> :</span> <span class="keyword">virtual</span> <span class="keyword">public</span> Base &#123;</span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  Base3(): m_base3(<span class="number">23</span>) &#123;&#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">virtual</span> ~Base3() &#123;</span><br><span class="line">    m_base3 = <span class="number">0</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">foo</span><span class="params">()</span> </span>&#123;</span><br><span class="line">   m_base3++;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="keyword">int</span> m_base3;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Derived</span> :</span> <span class="keyword">public</span> Base2, <span class="keyword">public</span> Base3 &#123;</span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  Derived(): m_derived(<span class="number">3</span>) &#123;&#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">virtual</span> ~Derived() &#123;</span><br><span class="line">    m_derived = <span class="number">0</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">foo</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    m_derived++;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="keyword">int</span> m_derived;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span> *argv[])</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">  Base b, *pb = <span class="literal">nullptr</span>;</span><br><span class="line">  Base1 b1;</span><br><span class="line">  Base2 b2;</span><br><span class="line">  Base3 b3;</span><br><span class="line">  Derived d;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Base and foo</span></span><br><span class="line">  b.foo();</span><br><span class="line">  pb = &amp;b;</span><br><span class="line">  pb-&gt;foo();</span><br><span class="line"></span><br><span class="line">  <span class="comment">// single inheritance</span></span><br><span class="line">  b1.foo();</span><br><span class="line">  b1.bar();</span><br><span class="line">  pb = &amp;b1;</span><br><span class="line">  pb-&gt;foo();</span><br><span class="line">  pb-&gt;bar();</span><br><span class="line"></span><br><span class="line">  <span class="comment">// virtual single inheritance</span></span><br><span class="line">  pb = &amp;b2;</span><br><span class="line">  pb-&gt;foo();</span><br><span class="line"></span><br><span class="line">  pb = &amp;b3;</span><br><span class="line">  pb-&gt;foo();</span><br><span class="line"></span><br><span class="line">  <span class="comment">// virtual multiple inheritance</span></span><br><span class="line">  b2.foo();</span><br><span class="line">  Base2 *pb2 = &amp;d;</span><br><span class="line">  pb2-&gt;foo();</span><br><span class="line"></span><br><span class="line">  b3.foo();</span><br><span class="line">  Base3 *pb3 = &amp;d;</span><br><span class="line">  pb3-&gt;foo();</span><br><span class="line"></span><br><span class="line">  pb = &amp;d;</span><br><span class="line">  pb-&gt;foo();</span><br><span class="line"></span><br><span class="line">  d.foo();</span><br><span class="line">  d.bar();</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>各类的继承关系图如下</p>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gcslxg2n3tj30f30c4glo.jpg" alt="base.jpeg"></p>
+<h2 id="2-调试分析"><a href="#2-调试分析" class="headerlink" title="2. 调试分析"></a>2. 调试分析</h2><h3 id="2-1-普通类"><a href="#2-1-普通类" class="headerlink" title="2.1 普通类"></a>2.1 普通类</h3><p>普通类可以有虚函数, 也可以没有. 这里以带虚函数的Base b对象为例</p>
+<h4 id="2-1-1-内存分析"><a href="#2-1-1-内存分析" class="headerlink" title="2.1.1 内存分析"></a>2.1.1 内存分析</h4><p><strong>查看对象信息</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">(gdb) p &#x2F;x &amp;b</span><br><span class="line">$2 &#x3D; 0xfffffffff218</span><br><span class="line"></span><br><span class="line">(gdb) p sizeof(b)</span><br><span class="line">$3 &#x3D; 16</span><br><span class="line"></span><br><span class="line">(gdb) x&#x2F;2xg 0xfffffffff218</span><br><span class="line">0xfffffffff218:	0x0000aaaaaaabcc58	0x0000aaaa00000001</span><br></pre></td></tr></table></figure>
+
+<p><strong>查看_vptr.Base</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;8xg 0x0000aaaaaaabcc58</span><br><span class="line">0xaaaaaaabcc58 &lt;_ZTV4Base+16&gt;:	0x0000aaaaaaaab55c	0x0000aaaaaaaab588</span><br><span class="line">0xaaaaaaabcc68 &lt;_ZTV4Base+32&gt;:	0x0000aaaaaaaab5ac	0x0000aaaaaaaab5d4</span><br><span class="line">0xaaaaaaabcc78 &lt;_ZTI7Derived&gt;:	0x0000fffff7fc4338	0x0000aaaaaaaabcd0</span><br><span class="line">0xaaaaaaabcc88 &lt;_ZTI7Derived+16&gt;:	0x0000000200000002	0x0000aaaaaaabccd8</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab55c</span><br><span class="line">Dump of assembler code for function Base::~Base():</span><br><span class="line">   0x0000aaaaaaaab55c &lt;+0&gt;:	sub	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab560 &lt;+4&gt;:	str	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab564 &lt;+8&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab568 &lt;+12&gt;:	add	x1, x0, #0xc58</span><br><span class="line">   0x0000aaaaaaaab56c &lt;+16&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab570 &lt;+20&gt;:	str	x1, [x0]</span><br><span class="line">   0x0000aaaaaaaab574 &lt;+24&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab578 &lt;+28&gt;:	str	wzr, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab57c &lt;+32&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab580 &lt;+36&gt;:	add	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab584 &lt;+40&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab588</span><br><span class="line">Dump of assembler code for function Base::~Base():</span><br><span class="line">   0x0000aaaaaaaab588 &lt;+0&gt;:	stp	x29, x30, [sp, #-32]!</span><br><span class="line">   0x0000aaaaaaaab58c &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaab590 &lt;+8&gt;:	str	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab594 &lt;+12&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab598 &lt;+16&gt;:	bl	0xaaaaaaaab55c &lt;Base::~Base()&gt;</span><br><span class="line">   0x0000aaaaaaaab59c &lt;+20&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab5a0 &lt;+24&gt;:	bl	0xaaaaaaaab110 &lt;_ZdlPv@plt&gt;</span><br><span class="line">   0x0000aaaaaaaab5a4 &lt;+28&gt;:	ldp	x29, x30, [sp], #32</span><br><span class="line">   0x0000aaaaaaaab5a8 &lt;+32&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab5ac</span><br><span class="line">Dump of assembler code for function Base::foo():</span><br><span class="line">   0x0000aaaaaaaab5ac &lt;+0&gt;:	sub	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab5b0 &lt;+4&gt;:	str	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5b4 &lt;+8&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5b8 &lt;+12&gt;:	ldr	w0, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab5bc &lt;+16&gt;:	add	w1, w0, #0x1</span><br><span class="line">   0x0000aaaaaaaab5c0 &lt;+20&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5c4 &lt;+24&gt;:	str	w1, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab5c8 &lt;+28&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab5cc &lt;+32&gt;:	add	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab5d0 &lt;+36&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab5d4</span><br><span class="line">Dump of assembler code for function Base::bar():</span><br><span class="line">   0x0000aaaaaaaab5d4 &lt;+0&gt;:	sub	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab5d8 &lt;+4&gt;:	str	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5dc &lt;+8&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5e0 &lt;+12&gt;:	ldr	w0, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab5e4 &lt;+16&gt;:	sub	w1, w0, #0x1</span><br><span class="line">   0x0000aaaaaaaab5e8 &lt;+20&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5ec &lt;+24&gt;:	str	w1, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab5f0 &lt;+28&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab5f4 &lt;+32&gt;:	add	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab5f8 &lt;+36&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<h4 id="2-1-2-对象模型"><a href="#2-1-2-对象模型" class="headerlink" title="2.1.2 对象模型"></a>2.1.2 对象模型</h4><p>根据前面的分析， 对Base类(包含虚函数)的实例b， 其对象模型如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">+-----------+            </span><br><span class="line">|_vptr.Base |   ----&gt;    +-------------+ </span><br><span class="line">+-----------+            |Base::~Base()|</span><br><span class="line">|  m_base   |            +-------------+ </span><br><span class="line">+-----------+            |Base::~Base()|</span><br><span class="line">                         +-------------+</span><br><span class="line">                         | Base::foo() |</span><br><span class="line">                         +-------------+</span><br><span class="line">                         | Base::bar() |</span><br><span class="line">                         +-------------+</span><br></pre></td></tr></table></figure>
+
+<p>这里vtable中有两个版本的Base::~Base()</p>
+<ul>
+<li>第1个Base::~Base()完成Base类的析构函数功能. 以前提到的<strong>栈对象</strong>/<strong>局部静态对象</strong>/<strong>全局对象</strong>析构时会调用该版本</li>
+<li>第2个Base::~Base()先调用第1个Base::~Base()，然后释放对象占用的内存. <strong>堆对象</strong>析构时会调用该版本.</li>
+</ul>
+<h4 id="2-1-3-代码分析"><a href="#2-1-3-代码分析" class="headerlink" title="2.1.3 代码分析"></a>2.1.3 代码分析</h4><p><strong>通过实例直接调用虚函数</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">b.foo();</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaab2d8 &lt;+84&gt;:	add	x0, x29, #0x48</span><br><span class="line">0x0000aaaaaaaab2dc &lt;+88&gt;:	bl	0xaaaaaaaab5ac &lt;Base::foo()&gt;</span><br></pre></td></tr></table></figure>
+
+<p><strong>通过指针调用虚函数</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">pb = &amp;b;</span><br><span class="line">pb-&gt;foo();</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaab2e0 &lt;+92&gt;:	add	x0, x29, #0x48</span><br><span class="line">0x0000aaaaaaaab2e4 &lt;+96&gt;:	str	x0, [x29, #48]</span><br><span class="line">0x0000aaaaaaaab2e8 &lt;+100&gt;:	ldr	x0, [x29, #48]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab2ec &lt;+104&gt;:	ldr	x0, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab2f0 &lt;+108&gt;:	add	x0, x0, #0x10</span><br><span class="line">0x0000aaaaaaaab2f4 &lt;+112&gt;:	ldr	x1, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab2f8 &lt;+116&gt;:	ldr	x0, [x29, #48]</span><br><span class="line">0x0000aaaaaaaab2fc &lt;+120&gt;:	blr	x1</span><br></pre></td></tr></table></figure>
+
+<p>流程如下</p>
+<ul>
+<li>确定当前对象地址(x0 = x29 + 0x48)</li>
+<li>找到vptr(gcc下默认就是[x0])</li>
+<li>在vtable中找到要调用的虚函数(vtable[2])</li>
+<li>跳转到虚函数执行</li>
+</ul>
+<h3 id="2-2-单一继承"><a href="#2-2-单一继承" class="headerlink" title="2.2 单一继承"></a>2.2 单一继承</h3><p>这里以Base1 b1对象为例</p>
+<h4 id="2-2-1-内存分析"><a href="#2-2-1-内存分析" class="headerlink" title="2.2.1 内存分析"></a>2.2.1 内存分析</h4><p><strong>查看对象信息</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">(gdb) p &#x2F;x &amp;b1</span><br><span class="line">$4 &#x3D; 0xfffffffff228</span><br><span class="line"></span><br><span class="line">(gdb) p sizeof(b1)</span><br><span class="line">$5 &#x3D; 16</span><br><span class="line"></span><br><span class="line">(gdb) x&#x2F;2xg 0xfffffffff228</span><br><span class="line">0xfffffffff228:	0x0000aaaaaaabcc28	0x0000001500000001</span><br></pre></td></tr></table></figure>
+
+<p><strong>查看_vptr.Base</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;8xg 0x0000aaaaaaabcc28</span><br><span class="line">0xaaaaaaabcc28 &lt;_ZTV5Base1+16&gt;:	0x0000aaaaaaaab638	0x0000aaaaaaaab670</span><br><span class="line">0xaaaaaaabcc38 &lt;_ZTV5Base1+32&gt;:	0x0000aaaaaaaab694	0x0000aaaaaaaab5d4</span><br><span class="line">0xaaaaaaabcc48 &lt;_ZTV4Base&gt;:	0x0000000000000000	0x0000aaaaaaabcd18</span><br><span class="line">0xaaaaaaabcc58 &lt;_ZTV4Base+16&gt;:	0x0000aaaaaaaab55c	0x0000aaaaaaaab588</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab638</span><br><span class="line">Dump of assembler code for function Base1::~Base1():</span><br><span class="line">   0x0000aaaaaaaab638 &lt;+0&gt;:	stp	x29, x30, [sp, #-32]!</span><br><span class="line">   0x0000aaaaaaaab63c &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaab640 &lt;+8&gt;:	str	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab644 &lt;+12&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab648 &lt;+16&gt;:	add	x1, x0, #0xc28</span><br><span class="line">   0x0000aaaaaaaab64c &lt;+20&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab650 &lt;+24&gt;:	str	x1, [x0]</span><br><span class="line">   0x0000aaaaaaaab654 &lt;+28&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab658 &lt;+32&gt;:	str	wzr, [x0, #12]</span><br><span class="line">   0x0000aaaaaaaab65c &lt;+36&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab660 &lt;+40&gt;:	bl	0xaaaaaaaab55c &lt;Base::~Base()&gt;</span><br><span class="line">   0x0000aaaaaaaab664 &lt;+44&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab668 &lt;+48&gt;:	ldp	x29, x30, [sp], #32</span><br><span class="line">   0x0000aaaaaaaab66c &lt;+52&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab670</span><br><span class="line">Dump of assembler code for function Base1::~Base1():</span><br><span class="line">   0x0000aaaaaaaab670 &lt;+0&gt;:	stp	x29, x30, [sp, #-32]!</span><br><span class="line">   0x0000aaaaaaaab674 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaab678 &lt;+8&gt;:	str	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab67c &lt;+12&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab680 &lt;+16&gt;:	bl	0xaaaaaaaab638 &lt;Base1::~Base1()&gt;</span><br><span class="line">   0x0000aaaaaaaab684 &lt;+20&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab688 &lt;+24&gt;:	bl	0xaaaaaaaab110 &lt;_ZdlPv@plt&gt;</span><br><span class="line">   0x0000aaaaaaaab68c &lt;+28&gt;:	ldp	x29, x30, [sp], #32</span><br><span class="line">   0x0000aaaaaaaab690 &lt;+32&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab694</span><br><span class="line">Dump of assembler code for function Base1::foo():</span><br><span class="line">   0x0000aaaaaaaab694 &lt;+0&gt;:	sub	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab698 &lt;+4&gt;:	str	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab69c &lt;+8&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab6a0 &lt;+12&gt;:	ldr	w0, [x0, #12]</span><br><span class="line">   0x0000aaaaaaaab6a4 &lt;+16&gt;:	add	w1, w0, #0x1</span><br><span class="line">   0x0000aaaaaaaab6a8 &lt;+20&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab6ac &lt;+24&gt;:	str	w1, [x0, #12]</span><br><span class="line">   0x0000aaaaaaaab6b0 &lt;+28&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab6b4 &lt;+32&gt;:	add	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab6b8 &lt;+36&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab5d4</span><br><span class="line">Dump of assembler code for function Base::bar():</span><br><span class="line">   0x0000aaaaaaaab5d4 &lt;+0&gt;:	sub	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab5d8 &lt;+4&gt;:	str	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5dc &lt;+8&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5e0 &lt;+12&gt;:	ldr	w0, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab5e4 &lt;+16&gt;:	sub	w1, w0, #0x1</span><br><span class="line">   0x0000aaaaaaaab5e8 &lt;+20&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5ec &lt;+24&gt;:	str	w1, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab5f0 &lt;+28&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab5f4 &lt;+32&gt;:	add	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab5f8 &lt;+36&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<h4 id="2-2-2-对象模型"><a href="#2-2-2-对象模型" class="headerlink" title="2.2.2 对象模型"></a>2.2.2 对象模型</h4><p>根据前面的分析，对Base1类(包含虚函数 + 单一继承)的实例b1， 其对象模型如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">+-----------+            </span><br><span class="line">|_vptr.Base |   ----&gt;    +---------------+</span><br><span class="line">+-----------+            |Base1::~Base1()|</span><br><span class="line">|  m_base   |            +---------------+ </span><br><span class="line">+-----------+            |Base1::~Base1()|</span><br><span class="line">|  m_base1  |            +---------------+</span><br><span class="line">+-----------+            |  Base1::foo() |</span><br><span class="line">                         +---------------+</span><br><span class="line">                         |  Base::bar()  |</span><br><span class="line">                         +---------------+</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>单一继承情况下, 虽然_vptr.Base包含基类名, 但实际是Base1类的vptr</li>
+<li>Base1 override基类Base的foo(), 但没有override基类Base的bar(), 所以Base1虚表中的foo()是Base1::foo(), bar()是Base::bar().</li>
+</ul>
+<h4 id="2-2-3-代码分析"><a href="#2-2-3-代码分析" class="headerlink" title="2.2.3 代码分析"></a>2.2.3 代码分析</h4><p><strong>通过实例直接调用虚函数</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">b1.foo();</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">   0x0000aaaaaaaab300 &lt;+124&gt;:	add	x0, x29, #0x58</span><br><span class="line">   0x0000aaaaaaaab304 &lt;+128&gt;:	bl	0xaaaaaaaab694 &lt;Base1::foo()&gt;</span><br><span class="line">&#96;&#96;&#96;   </span><br><span class="line">  </span><br><span class="line">**通过基类指针调用虚函数**</span><br><span class="line">&#96;&#96;&#96;cpp</span><br><span class="line">  pb &#x3D; &amp;b1;</span><br><span class="line">  pb-&gt;foo();</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaab310 &lt;+140&gt;:	add	x0, x29, #0x58</span><br><span class="line">0x0000aaaaaaaab314 &lt;+144&gt;:	str	x0, [x29, #48]</span><br><span class="line">0x0000aaaaaaaab318 &lt;+148&gt;:	ldr	x0, [x29, #48]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab31c &lt;+152&gt;:	ldr	x0, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab320 &lt;+156&gt;:	add	x0, x0, #0x10</span><br><span class="line">0x0000aaaaaaaab324 &lt;+160&gt;:	ldr	x1, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab328 &lt;+164&gt;:	ldr	x0, [x29, #48]</span><br><span class="line">0x0000aaaaaaaab32c &lt;+168&gt;:	blr	x1</span><br></pre></td></tr></table></figure>
+
+
+<h3 id="2-3-虚继承1"><a href="#2-3-虚继承1" class="headerlink" title="2.3 虚继承1"></a>2.3 虚继承1</h3><p>先看虚继承简单的情形, 这里以Base2 b2对象为例</p>
+<h4 id="2-3-1-内存分析"><a href="#2-3-1-内存分析" class="headerlink" title="2.3.1 内存分析"></a>2.3.1 内存分析</h4><p><strong>查看对象信息</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">(gdb) p &#x2F;x &amp;b2</span><br><span class="line">$6 &#x3D; 0xfffffffff238</span><br><span class="line"></span><br><span class="line">(gdb) p sizeof(b2)</span><br><span class="line">$7 &#x3D; 32</span><br><span class="line"></span><br><span class="line">(gdb) x&#x2F;4xg 0xfffffffff238</span><br><span class="line">0xfffffffff238:	0x0000aaaaaaabcba8	0x0000ffff00000016</span><br><span class="line">0xfffffffff248:	0x0000aaaaaaabcbe8	0x0000ffff00000001</span><br></pre></td></tr></table></figure>
+
+<p>这里有两个vptr</p>
+<ul>
+<li>_vptr.Base2 = 0x0000aaaaaaabcba8</li>
+<li>_vptr.Base = 0x0000aaaaaaabcbe8</li>
+</ul>
+<p><strong>查看_vptr.Base2</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;8xg 0x0000aaaaaaabcba8</span><br><span class="line">0xaaaaaaabcba8 &lt;_ZTV5Base2+24&gt;:	0x0000aaaaaaaab7c4	0x0000aaaaaaaab824</span><br><span class="line">0xaaaaaaabcbb8 &lt;_ZTV5Base2+40&gt;:	0x0000aaaaaaaab858	0x0000000000000000</span><br><span class="line">0xaaaaaaabcbc8 &lt;_ZTV5Base2+56&gt;:	0xfffffffffffffff0	0xfffffffffffffff0</span><br><span class="line">0xaaaaaaabcbd8 &lt;_ZTV5Base2+72&gt;:	0xfffffffffffffff0	0x0000aaaaaaabccd8</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab7c4</span><br><span class="line">Dump of assembler code for function Base2::~Base2():</span><br><span class="line">   0x0000aaaaaaaab7c4 &lt;+0&gt;:	stp	x29, x30, [sp, #-32]!</span><br><span class="line">   0x0000aaaaaaaab7c8 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaab7cc &lt;+8&gt;:	str	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab7d0 &lt;+12&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab7d4 &lt;+16&gt;:	add	x1, x0, #0xba8</span><br><span class="line">   0x0000aaaaaaaab7d8 &lt;+20&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab7dc &lt;+24&gt;:	str	x1, [x0]</span><br><span class="line">   0x0000aaaaaaaab7e0 &lt;+28&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab7e4 &lt;+32&gt;:	add	x0, x0, #0x10</span><br><span class="line">   0x0000aaaaaaaab7e8 &lt;+36&gt;:	adrp	x1, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaab7ec &lt;+40&gt;:	add	x1, x1, #0xbe8</span><br><span class="line">   0x0000aaaaaaaab7f0 &lt;+44&gt;:	str	x1, [x0]</span><br><span class="line">   0x0000aaaaaaaab7f4 &lt;+48&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab7f8 &lt;+52&gt;:	str	wzr, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab7fc &lt;+56&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab800 &lt;+60&gt;:	add	x0, x0, #0x10</span><br><span class="line">   0x0000aaaaaaaab804 &lt;+64&gt;:	bl	0xaaaaaaaab55c &lt;Base::~Base()&gt;</span><br><span class="line">   0x0000aaaaaaaab808 &lt;+68&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab80c &lt;+72&gt;:	ldp	x29, x30, [sp], #32</span><br><span class="line">   0x0000aaaaaaaab810 &lt;+76&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab824</span><br><span class="line">Dump of assembler code for function Base2::~Base2():</span><br><span class="line">   0x0000aaaaaaaab824 &lt;+0&gt;:	stp	x29, x30, [sp, #-32]!</span><br><span class="line">   0x0000aaaaaaaab828 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaab82c &lt;+8&gt;:	str	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab830 &lt;+12&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab834 &lt;+16&gt;:	bl	0xaaaaaaaab7c4 &lt;Base2::~Base2()&gt;</span><br><span class="line">   0x0000aaaaaaaab838 &lt;+20&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaab83c &lt;+24&gt;:	bl	0xaaaaaaaab110 &lt;_ZdlPv@plt&gt;</span><br><span class="line">   0x0000aaaaaaaab840 &lt;+28&gt;:	ldp	x29, x30, [sp], #32</span><br><span class="line">   0x0000aaaaaaaab844 &lt;+32&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab858</span><br><span class="line">Dump of assembler code for function Base2::foo():</span><br><span class="line">   0x0000aaaaaaaab858 &lt;+0&gt;:	sub	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab85c &lt;+4&gt;:	str	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab860 &lt;+8&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab864 &lt;+12&gt;:	ldr	w0, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab868 &lt;+16&gt;:	add	w1, w0, #0x1</span><br><span class="line">   0x0000aaaaaaaab86c &lt;+20&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab870 &lt;+24&gt;:	str	w1, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab874 &lt;+28&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab878 &lt;+32&gt;:	add	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab87c &lt;+36&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p><strong>查看_vptr.Base</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;8xg 0x0000aaaaaaabcbe8</span><br><span class="line">0xaaaaaaabcbe8 &lt;_ZTV5Base2+88&gt;:	0x0000aaaaaaaab814	0x0000aaaaaaaab848</span><br><span class="line">0xaaaaaaabcbf8 &lt;_ZTV5Base2+104&gt;:	0x0000aaaaaaaab880	0x0000aaaaaaaab5d4</span><br><span class="line">0xaaaaaaabcc08 &lt;_ZTT5Base2&gt;:	0x0000aaaaaaabcba8	0x0000aaaaaaabcbe8</span><br><span class="line">0xaaaaaaabcc18 &lt;_ZTV5Base1&gt;:	0x0000000000000000	0x0000aaaaaaabcd00</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab814</span><br><span class="line">Dump of assembler code for function _ZTv0_n24_N5Base2D1Ev:</span><br><span class="line">   0x0000aaaaaaaab814 &lt;+0&gt;:	ldr	x16, [x0]</span><br><span class="line">   0x0000aaaaaaaab818 &lt;+4&gt;:	ldur	x17, [x16, #-24]</span><br><span class="line">   0x0000aaaaaaaab81c &lt;+8&gt;:	add	x0, x0, x17</span><br><span class="line">   0x0000aaaaaaaab820 &lt;+12&gt;:	b	0xaaaaaaaab7c4 &lt;Base2::~Base2()&gt;</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab848</span><br><span class="line">Dump of assembler code for function _ZTv0_n24_N5Base2D0Ev:</span><br><span class="line">   0x0000aaaaaaaab848 &lt;+0&gt;:	ldr	x16, [x0]</span><br><span class="line">   0x0000aaaaaaaab84c &lt;+4&gt;:	ldur	x17, [x16, #-24]</span><br><span class="line">   0x0000aaaaaaaab850 &lt;+8&gt;:	add	x0, x0, x17</span><br><span class="line">   0x0000aaaaaaaab854 &lt;+12&gt;:	b	0xaaaaaaaab824 &lt;Base2::~Base2()&gt;</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab880</span><br><span class="line">Dump of assembler code for function _ZTv0_n32_N5Base23fooEv:</span><br><span class="line">   0x0000aaaaaaaab880 &lt;+0&gt;:	ldr	x16, [x0]</span><br><span class="line">   0x0000aaaaaaaab884 &lt;+4&gt;:	ldur	x17, [x16, #-32]</span><br><span class="line">   0x0000aaaaaaaab888 &lt;+8&gt;:	add	x0, x0, x17</span><br><span class="line">   0x0000aaaaaaaab88c &lt;+12&gt;:	b	0xaaaaaaaab858 &lt;Base2::foo()&gt;</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab5d4</span><br><span class="line">Dump of assembler code for function Base::bar():</span><br><span class="line">   0x0000aaaaaaaab5d4 &lt;+0&gt;:	sub	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab5d8 &lt;+4&gt;:	str	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5dc &lt;+8&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5e0 &lt;+12&gt;:	ldr	w0, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab5e4 &lt;+16&gt;:	sub	w1, w0, #0x1</span><br><span class="line">   0x0000aaaaaaaab5e8 &lt;+20&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5ec &lt;+24&gt;:	str	w1, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab5f0 &lt;+28&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab5f4 &lt;+32&gt;:	add	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab5f8 &lt;+36&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p>几点说明:</p>
+<ul>
+<li>这里的_vptr.Base(0x0000aaaaaaabcbe8)并不是Base类真正的vptr(0x0000aaaaaaabcc58)</li>
+<li>前面的三个函数是<strong>编译器</strong>生成的<strong>thunk</strong>函数，用于修正对象地址(this指针由Base子对象地址切换到Base2对象地址)，跳转到Base2 override的虚函数。</li>
+<li>最后一个虚函数是Base::bar(), Base2没有override, 这里直接存储其地址, this指针为Base子对象地址</li>
+</ul>
+<h4 id="2-3-2-对象模型"><a href="#2-3-2-对象模型" class="headerlink" title="2.3.2 对象模型"></a>2.3.2 对象模型</h4><p>根据前面的分析，对Base2类(虚继承)的实例b2， 其对象模型如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">+-----------+            </span><br><span class="line">|_vptr.Base2|   ----&gt;    +---------------+</span><br><span class="line">+-----------+            |Base2::~Base2()| &lt;------------------</span><br><span class="line">|  m_base2  |            +---------------+                   |</span><br><span class="line">+-----------+            |Base2::~Base2()| &lt;-----------------|--</span><br><span class="line">|_vptr.Base |  ----|     +---------------+                   | |</span><br><span class="line">+-----------+      |     |  Base2::foo() | &lt;-----------------|-|--</span><br><span class="line">|   m_base  |      |     +---------------+                   | | |</span><br><span class="line">+-----------+      |                                         | | |</span><br><span class="line">                   | --&gt; +--------------------------------+  | | |</span><br><span class="line">                         |virtual thunk to Base2::~Base2()|--- | |</span><br><span class="line">                         +--------------------------------+    | |</span><br><span class="line">                         |virtual thunk to Base2::~Base2()|----- |</span><br><span class="line">                         +--------------------------------+      |</span><br><span class="line">                         | virtual thunk to Base2::foo()  |-------</span><br><span class="line">                         +--------------------------------+</span><br><span class="line">                         |           Base::bar()          |</span><br><span class="line">                         +--------------------------------+</span><br></pre></td></tr></table></figure>
+
+<h4 id="2-3-3-代码分析"><a href="#2-3-3-代码分析" class="headerlink" title="2.3.3 代码分析"></a>2.3.3 代码分析</h4><p><strong>通过实例直接调用虚函数</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">b2.foo();</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaab390 &lt;+268&gt;:	add	x0, x29, #0x68</span><br><span class="line">0x0000aaaaaaaab394 &lt;+272&gt;:	bl	0xaaaaaaaab858 &lt;Base2::foo()&gt;</span><br></pre></td></tr></table></figure>
+
+<p><strong>通过基类指针调用虚函数</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">pb = &amp;b2;</span><br><span class="line">pb-&gt;foo();</span><br></pre></td></tr></table></figure>
+
+<p>对应汇编如下:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaab348 &lt;+196&gt;:	add	x0, x29, #0x68</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab34c &lt;+200&gt;:	add	x0, x0, #0x10</span><br><span class="line">0x0000aaaaaaaab350 &lt;+204&gt;:	str	x0, [x29, #48]</span><br><span class="line">0x0000aaaaaaaab354 &lt;+208&gt;:	ldr	x0, [x29, #48]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab358 &lt;+212&gt;:	ldr	x0, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab35c &lt;+216&gt;:	add	x0, x0, #0x10</span><br><span class="line">0x0000aaaaaaaab360 &lt;+220&gt;:	ldr	x1, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab364 &lt;+224&gt;:	ldr	x0, [x29, #48]</span><br><span class="line">0x0000aaaaaaaab368 &lt;+228&gt;:	blr	x1</span><br></pre></td></tr></table></figure>
+
+<p>通过上面代码可以看到, 虚继承和单一继承在通过基类指针访问派生类对象过程中,<br>流程不同.</p>
+<ul>
+<li>派生类对象地址加上特定的偏移得到<strong>基类子对象地址</strong>(编译器在处理pb = &amp;b2后, 此时的pb已经不是b2的地址了, 而是&amp;b2 + 0x10, 指向Base子对象) </li>
+<li>根据基类子对象地址, 找到_vptr.Base</li>
+<li>根据要调用的虚函数, 在vtable找到对应项: <strong>thunk函数</strong>或<strong>基类版本</strong></li>
+<li>thunk函数是一段汇编代码, 通过修正对象地址(基类子对象地址切换到派生类对象地址), 最终跳转到派生类版本执行</li>
+</ul>
+<h3 id="2-4-虚继承2"><a href="#2-4-虚继承2" class="headerlink" title="2.4 虚继承2"></a>2.4 虚继承2</h3><p>最后看看虚继承最复杂的情形, 这里以Derived d对象为例</p>
+<h4 id="2-4-1-内存分析"><a href="#2-4-1-内存分析" class="headerlink" title="2.4.1 内存分析"></a>2.4.1 内存分析</h4><p><strong>查看对象信息</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">(gdb) p &#x2F;x &amp;d</span><br><span class="line">$10 &#x3D; 0xfffffffff278</span><br><span class="line"></span><br><span class="line">(gdb) p sizeof(d)</span><br><span class="line">$11 &#x3D; 48</span><br><span class="line"></span><br><span class="line">(gdb) x&#x2F;6xg 0xfffffffff278</span><br><span class="line">0xfffffffff278:	0x0000aaaaaaabc950	0x0000aaaa00000016</span><br><span class="line">0xfffffffff288:	0x0000aaaaaaabc980	0x0000000500000017</span><br><span class="line">0xfffffffff298:	0x0000aaaaaaabc9c0	0x0000aaaa00000001</span><br></pre></td></tr></table></figure>
+
+<p><strong>查看_vptr.Base2</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;8xg 0x0000aaaaaaabc950</span><br><span class="line">0xaaaaaaabc950 &lt;_ZTV7Derived+24&gt;:	0x0000aaaaaaaabafc	0x0000aaaaaaaabba8</span><br><span class="line">0xaaaaaaabc960 &lt;_ZTV7Derived+40&gt;:	0x0000aaaaaaaabbe4	0x0000000000000010</span><br><span class="line">0xaaaaaaabc970 &lt;_ZTV7Derived+56&gt;:	0xfffffffffffffff0	0x0000aaaaaaabcc78</span><br><span class="line">0xaaaaaaabc980 &lt;_ZTV7Derived+72&gt;:	0x0000aaaaaaaabba0	0x0000aaaaaaaabbdc</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaabafc</span><br><span class="line">Dump of assembler code for function Derived::~Derived():</span><br><span class="line">   0x0000aaaaaaaabafc &lt;+0&gt;:	stp	x29, x30, [sp, #-32]!</span><br><span class="line">   0x0000aaaaaaaabb00 &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaabb04 &lt;+8&gt;:	str	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabb08 &lt;+12&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaabb0c &lt;+16&gt;:	add	x1, x0, #0x950</span><br><span class="line">   0x0000aaaaaaaabb10 &lt;+20&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabb14 &lt;+24&gt;:	str	x1, [x0]</span><br><span class="line">   0x0000aaaaaaaabb18 &lt;+28&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabb1c &lt;+32&gt;:	add	x0, x0, #0x20</span><br><span class="line">   0x0000aaaaaaaabb20 &lt;+36&gt;:	adrp	x1, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaabb24 &lt;+40&gt;:	add	x1, x1, #0x9c0</span><br><span class="line">   0x0000aaaaaaaabb28 &lt;+44&gt;:	str	x1, [x0]</span><br><span class="line">   0x0000aaaaaaaabb2c &lt;+48&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaabb30 &lt;+52&gt;:	add	x1, x0, #0x980</span><br><span class="line">   0x0000aaaaaaaabb34 &lt;+56&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabb38 &lt;+60&gt;:	str	x1, [x0, #16]</span><br><span class="line">   0x0000aaaaaaaabb3c &lt;+64&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabb40 &lt;+68&gt;:	str	wzr, [x0, #28]</span><br><span class="line">   0x0000aaaaaaaabb44 &lt;+72&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabb48 &lt;+76&gt;:	add	x2, x0, #0x10</span><br><span class="line">   0x0000aaaaaaaabb4c &lt;+80&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaabb50 &lt;+84&gt;:	add	x0, x0, #0x9f8</span><br><span class="line">   0x0000aaaaaaaabb54 &lt;+88&gt;:	mov	x1, x0</span><br><span class="line">   0x0000aaaaaaaabb58 &lt;+92&gt;:	mov	x0, x2</span><br><span class="line">   0x0000aaaaaaaabb5c &lt;+96&gt;:	bl	0xaaaaaaaab940 &lt;Base3::~Base3()&gt;</span><br><span class="line">   0x0000aaaaaaaabb60 &lt;+100&gt;:	ldr	x2, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabb64 &lt;+104&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">   0x0000aaaaaaaabb68 &lt;+108&gt;:	add	x0, x0, #0x9e8</span><br><span class="line">   0x0000aaaaaaaabb6c &lt;+112&gt;:	mov	x1, x0</span><br><span class="line">   0x0000aaaaaaaabb70 &lt;+116&gt;:	mov	x0, x2</span><br><span class="line">   0x0000aaaaaaaabb74 &lt;+120&gt;:	bl	0xaaaaaaaab76c &lt;Base2::~Base2()&gt;</span><br><span class="line">   0x0000aaaaaaaabb78 &lt;+124&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabb7c &lt;+128&gt;:	add	x0, x0, #0x20</span><br><span class="line">   0x0000aaaaaaaabb80 &lt;+132&gt;:	bl	0xaaaaaaaab55c &lt;Base::~Base()&gt;</span><br><span class="line">   0x0000aaaaaaaabb84 &lt;+136&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaabb88 &lt;+140&gt;:	ldp	x29, x30, [sp], #32</span><br><span class="line">   0x0000aaaaaaaabb8c &lt;+144&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaabba8</span><br><span class="line">Dump of assembler code for function Derived::~Derived():</span><br><span class="line">   0x0000aaaaaaaabba8 &lt;+0&gt;:	stp	x29, x30, [sp, #-32]!</span><br><span class="line">   0x0000aaaaaaaabbac &lt;+4&gt;:	mov	x29, sp</span><br><span class="line">   0x0000aaaaaaaabbb0 &lt;+8&gt;:	str	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabbb4 &lt;+12&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabbb8 &lt;+16&gt;:	bl	0xaaaaaaaabafc &lt;Derived::~Derived()&gt;</span><br><span class="line">   0x0000aaaaaaaabbbc &lt;+20&gt;:	ldr	x0, [x29, #24]</span><br><span class="line">   0x0000aaaaaaaabbc0 &lt;+24&gt;:	bl	0xaaaaaaaab110 &lt;_ZdlPv@plt&gt;</span><br><span class="line">   0x0000aaaaaaaabbc4 &lt;+28&gt;:	ldp	x29, x30, [sp], #32</span><br><span class="line">   0x0000aaaaaaaabbc8 &lt;+32&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaabbe4</span><br><span class="line">Dump of assembler code for function Derived::foo():</span><br><span class="line">   0x0000aaaaaaaabbe4 &lt;+0&gt;:	sub	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaabbe8 &lt;+4&gt;:	str	x0, [sp, #8]</span><br><span class="line">&#x3D;&gt; 0x0000aaaaaaaabbec &lt;+8&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaabbf0 &lt;+12&gt;:	ldr	w0, [x0, #28]</span><br><span class="line">   0x0000aaaaaaaabbf4 &lt;+16&gt;:	add	w1, w0, #0x1</span><br><span class="line">   0x0000aaaaaaaabbf8 &lt;+20&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaabbfc &lt;+24&gt;:	str	w1, [x0, #28]</span><br><span class="line">   0x0000aaaaaaaabc00 &lt;+28&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaabc04 &lt;+32&gt;:	add	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaabc08 &lt;+36&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p>Base2类是Derived派生类列表的第一个直接基类, 这里的_vptr.Base2实际是Derived类的vptr</p>
+<p><strong>查看_vptr.Base3</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;8xg 0x0000aaaaaaabc980</span><br><span class="line">0xaaaaaaabc980 &lt;_ZTV7Derived+72&gt;:	0x0000aaaaaaaabba0	0x0000aaaaaaaabbdc</span><br><span class="line">0xaaaaaaabc990 &lt;_ZTV7Derived+88&gt;:	0x0000aaaaaaaabc1c	0x0000000000000000</span><br><span class="line">0xaaaaaaabc9a0 &lt;_ZTV7Derived+104&gt;:	0xffffffffffffffe0	0xffffffffffffffe0</span><br><span class="line">0xaaaaaaabc9b0 &lt;_ZTV7Derived+120&gt;:	0xffffffffffffffe0	0x0000aaaaaaabcc78</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaabba0</span><br><span class="line">Dump of assembler code for function _ZThn16_N7DerivedD1Ev:</span><br><span class="line">   0x0000aaaaaaaabba0 &lt;+0&gt;:	sub	x0, x0, #0x10</span><br><span class="line">   0x0000aaaaaaaabba4 &lt;+4&gt;:	b	0xaaaaaaaabafc &lt;Derived::~Derived()&gt;</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaabbdc</span><br><span class="line">Dump of assembler code for function _ZThn16_N7DerivedD0Ev:</span><br><span class="line">   0x0000aaaaaaaabbdc &lt;+0&gt;:	sub	x0, x0, #0x10</span><br><span class="line">   0x0000aaaaaaaabbe0 &lt;+4&gt;:	b	0xaaaaaaaabba8 &lt;Derived::~Derived()&gt;</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaabc1c</span><br><span class="line">Dump of assembler code for function _ZThn16_N7Derived3fooEv:</span><br><span class="line">   0x0000aaaaaaaabc1c &lt;+0&gt;:	sub	x0, x0, #0x10</span><br><span class="line">   0x0000aaaaaaaabc20 &lt;+4&gt;:	b	0xaaaaaaaabbe4 &lt;Derived::foo()&gt;</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+<p>Base3类是Derived派生类列表的第二个直接基类, 这里的_vptr.Base3并不是Base3类的vptr.</p>
+<p><strong>_vptr.Base</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;8xg 0x0000aaaaaaabc9c0</span><br><span class="line">0xaaaaaaabc9c0 &lt;_ZTV7Derived+136&gt;:	0x0000aaaaaaaabb90	0x0000aaaaaaaabbcc</span><br><span class="line">0xaaaaaaabc9d0 &lt;_ZTV7Derived+152&gt;:	0x0000aaaaaaaabc0c	0x0000aaaaaaaab5d4</span><br><span class="line">0xaaaaaaabc9e0 &lt;_ZTT7Derived&gt;:	0x0000aaaaaaabc950	0x0000aaaaaaabca30</span><br><span class="line">0xaaaaaaabc9f0 &lt;_ZTT7Derived+16&gt;:	0x0000aaaaaaabca70	0x0000aaaaaaabcaa8</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaabb90</span><br><span class="line">Dump of assembler code for function _ZTv0_n24_N7DerivedD1Ev:</span><br><span class="line">   0x0000aaaaaaaabb90 &lt;+0&gt;:	ldr	x16, [x0]</span><br><span class="line">   0x0000aaaaaaaabb94 &lt;+4&gt;:	ldur	x17, [x16, #-24]</span><br><span class="line">   0x0000aaaaaaaabb98 &lt;+8&gt;:	add	x0, x0, x17</span><br><span class="line">   0x0000aaaaaaaabb9c &lt;+12&gt;:	b	0xaaaaaaaabafc &lt;Derived::~Derived()&gt;</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaabbcc</span><br><span class="line">Dump of assembler code for function _ZTv0_n24_N7DerivedD0Ev:</span><br><span class="line">   0x0000aaaaaaaabbcc &lt;+0&gt;:	ldr	x16, [x0]</span><br><span class="line">   0x0000aaaaaaaabbd0 &lt;+4&gt;:	ldur	x17, [x16, #-24]</span><br><span class="line">   0x0000aaaaaaaabbd4 &lt;+8&gt;:	add	x0, x0, x17</span><br><span class="line">   0x0000aaaaaaaabbd8 &lt;+12&gt;:	b	0xaaaaaaaabba8 &lt;Derived::~Derived()&gt;</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaabc0c</span><br><span class="line">Dump of assembler code for function _ZTv0_n32_N7Derived3fooEv:</span><br><span class="line">   0x0000aaaaaaaabc0c &lt;+0&gt;:	ldr	x16, [x0]</span><br><span class="line">   0x0000aaaaaaaabc10 &lt;+4&gt;:	ldur	x17, [x16, #-32]</span><br><span class="line">   0x0000aaaaaaaabc14 &lt;+8&gt;:	add	x0, x0, x17</span><br><span class="line">   0x0000aaaaaaaabc18 &lt;+12&gt;:	b	0xaaaaaaaabbe4 &lt;Derived::foo()&gt;</span><br><span class="line">End of assembler dump.</span><br><span class="line"></span><br><span class="line">(gdb) disas 0x0000aaaaaaaab5d4</span><br><span class="line">Dump of assembler code for function Base::bar():</span><br><span class="line">   0x0000aaaaaaaab5d4 &lt;+0&gt;:	sub	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab5d8 &lt;+4&gt;:	str	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5dc &lt;+8&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5e0 &lt;+12&gt;:	ldr	w0, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab5e4 &lt;+16&gt;:	sub	w1, w0, #0x1</span><br><span class="line">   0x0000aaaaaaaab5e8 &lt;+20&gt;:	ldr	x0, [sp, #8]</span><br><span class="line">   0x0000aaaaaaaab5ec &lt;+24&gt;:	str	w1, [x0, #8]</span><br><span class="line">   0x0000aaaaaaaab5f0 &lt;+28&gt;:	nop</span><br><span class="line">   0x0000aaaaaaaab5f4 &lt;+32&gt;:	add	sp, sp, #0x10</span><br><span class="line">   0x0000aaaaaaaab5f8 &lt;+36&gt;:	ret</span><br><span class="line">End of assembler dump.</span><br></pre></td></tr></table></figure>
+
+
+<h4 id="2-4-2-对象模型"><a href="#2-4-2-对象模型" class="headerlink" title="2.4.2 对象模型"></a>2.4.2 对象模型</h4><p>根据前面的分析，对Derived类(虚函数 + 虚继承)的实例d， 其对象模型如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">+-------------+            </span><br><span class="line">| _vptr.Base2 |   ----&gt;    +-------------------+</span><br><span class="line">+-------------+            |Derived::~Derived()| &lt;---------------------------</span><br><span class="line">|  m_base2    |            +-------------------+                      |     |</span><br><span class="line">+-------------+            |Derived::~Derived()| &lt;--------------------|-----|--</span><br><span class="line">| _vptr.Base3 |   ----     +-------------------+                      | |   | | </span><br><span class="line">+-------------+      |     |   Derived::foo()  | &lt;--------------------|-|---|-|-- </span><br><span class="line">|  m_base3    |      |     +-------------------+                      | | | | | |</span><br><span class="line">+-------------+      |                                                | | | | | |</span><br><span class="line">|  m_derived  |      ----&gt; +----------------------------------------+ | | | | | |</span><br><span class="line">+-------------+            |non-virtual thunk to Derived::~Derived()|-- | | | | |</span><br><span class="line">| _vptr.Base  |   ----     +----------------------------------------+   | | | | |</span><br><span class="line">+-------------+      |     |non-virtual thunk to Derived::~Derived()|---- | | | |</span><br><span class="line">|   m_base    |      |     +----------------------------------------+     | | | |</span><br><span class="line">+-------------+      |     |  non-virtual thunk to Derived::foo()   |------ | | |</span><br><span class="line">                     |     +----------------------------------------+       | | |</span><br><span class="line">                     |                                                      | | |</span><br><span class="line">                     ----&gt; +------------------------------------+           | | |</span><br><span class="line">                           |virtual thunk to Derived::~Derived()|------------ | |</span><br><span class="line">                           +------------------------------------+             | |</span><br><span class="line">                           |virtual thunk to Derived::~Derived()|-------------- |</span><br><span class="line">                           +------------------------------------+               |</span><br><span class="line">                           |   virtual thunk to Derived::foo()  |---------------- </span><br><span class="line">                           +------------------------------------+</span><br><span class="line">                           |            Base::bar()             |</span><br><span class="line">                           +------------------------------------+</span><br></pre></td></tr></table></figure>
+
+
+<h4 id="2-4-3-代码分析"><a href="#2-4-3-代码分析" class="headerlink" title="2.4.3 代码分析"></a>2.4.3 代码分析</h4><p><strong>通过实例直接调用虚函数</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">d.foo();</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">&#x3D;&gt; 0x0000aaaaaaaab408 &lt;+388&gt;:	add	x0, x29, #0xa8</span><br><span class="line">   0x0000aaaaaaaab40c &lt;+392&gt;:	bl	0xaaaaaaaabbe4 &lt;Derived::foo()&gt;</span><br></pre></td></tr></table></figure>
+
+<p><strong>通过基类指针调用虚函数</strong></p>
+<p>通过<strong>Base2基类指针</strong>访问d对象</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Base2 *pb2 = &amp;d;</span><br><span class="line">pb2-&gt;foo();</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaab398 &lt;+276&gt;:	add	x0, x29, #0xa8</span><br><span class="line">0x0000aaaaaaaab39c &lt;+280&gt;:	str	x0, [x29, #56]</span><br><span class="line">0x0000aaaaaaaab3a0 &lt;+284&gt;:	ldr	x0, [x29, #56]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab3a4 &lt;+288&gt;:	ldr	x0, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab3a8 &lt;+292&gt;:	add	x0, x0, #0x10</span><br><span class="line">0x0000aaaaaaaab3ac &lt;+296&gt;:	ldr	x1, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab3b0 &lt;+300&gt;:	ldr	x0, [x29, #56]</span><br><span class="line">0x0000aaaaaaaab3b4 &lt;+304&gt;:	blr	x1</span><br></pre></td></tr></table></figure>
+
+<p>通过<strong>Base3基类指</strong>针访问d对象</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Base3 *pb3 = &amp;d;</span><br><span class="line">pb3-&gt;foo();</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaab3c0 &lt;+316&gt;:	add	x0, x29, #0xa8</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab3c4 &lt;+320&gt;:	add	x0, x0, #0x10</span><br><span class="line">0x0000aaaaaaaab3c8 &lt;+324&gt;:	str	x0, [x29, #64]</span><br><span class="line">0x0000aaaaaaaab3cc &lt;+328&gt;:	ldr	x0, [x29, #64]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab3d0 &lt;+332&gt;:	ldr	x0, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab3d4 &lt;+336&gt;:	add	x0, x0, #0x10</span><br><span class="line">0x0000aaaaaaaab3d8 &lt;+340&gt;:	ldr	x1, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab3dc &lt;+344&gt;:	ldr	x0, [x29, #64]</span><br><span class="line">0x0000aaaaaaaab3e0 &lt;+348&gt;:	blr	x1</span><br></pre></td></tr></table></figure>
+
+<p>通过<strong>Base基类指针</strong>访问d对象</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">pb = &amp;d;</span><br><span class="line">pb-&gt;foo();</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">0x0000aaaaaaaab3e4 &lt;+352&gt;:	add	x0, x29, #0xa8</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab3e8 &lt;+356&gt;:	add	x0, x0, #0x20</span><br><span class="line">0x0000aaaaaaaab3ec &lt;+360&gt;:	str	x0, [x29, #48]</span><br><span class="line">0x0000aaaaaaaab3f0 &lt;+364&gt;:	ldr	x0, [x29, #48]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab3f4 &lt;+368&gt;:	ldr	x0, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab3f8 &lt;+372&gt;:	add	x0, x0, #0x10</span><br><span class="line">0x0000aaaaaaaab3fc &lt;+376&gt;:	ldr	x1, [x0]</span><br><span class="line"></span><br><span class="line">0x0000aaaaaaaab400 &lt;+380&gt;:	ldr	x0, [x29, #48]</span><br><span class="line">0x0000aaaaaaaab404 &lt;+384&gt;:	blr	x1</span><br></pre></td></tr></table></figure>
+
+<h2 id="3-总结"><a href="#3-总结" class="headerlink" title="3. 总结"></a>3. 总结</h2><ul>
+<li>普通类的对象模型主要由vptr(虚函数) + 当前类非静态成员变量组成</li>
+<li>单一继承类的对象模型主要由vptr + 基类非静态成员变量 + 派生类非静态成员变量组成</li>
+<li>虚继承的对象模型最复杂, 主要由多个vptr + 直接继承类非静态成员变量 + 派生类非静态成员变量 + 虚基类非静态成员变量组成</li>
+</ul>
+<hr>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg" alt="程序员自我修养"></p>
+<center>
+程序员自我修养(ID: dumphex)
+</center>
+
+<hr>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div>坚持技术原创，感谢您的支持！</div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpg" alt="dumphex 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpg" alt="dumphex 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>dumphex
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://dumphex.github.io/2020/03/27/cpp-object-model/" title="探索C++对象模型">https://dumphex.github.io/2020/03/27/cpp-object-model/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fa fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/object-model/" rel="tag"># object model</a>
+              <a href="/tags/vptr/" rel="tag"># vptr</a>
+              <a href="/tags/vtable/" rel="tag"># vtable</a>
+              <a href="/tags/thunk/" rel="tag"># thunk</a>
+              <a href="/tags/virtual-inheritance/" rel="tag"># virtual inheritance</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/03/20/OpenMP/" rel="prev" title="OpenMP">
+      <i class="fa fa-chevron-left"></i> OpenMP
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let activeClass = CONFIG.comments.activeClass;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-前言"><span class="nav-text">1. 前言</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-测试环境"><span class="nav-text">1.1 测试环境</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-测试代码"><span class="nav-text">1.2 测试代码</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-调试分析"><span class="nav-text">2. 调试分析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-普通类"><span class="nav-text">2.1 普通类</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-1-内存分析"><span class="nav-text">2.1.1 内存分析</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-2-对象模型"><span class="nav-text">2.1.2 对象模型</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-3-代码分析"><span class="nav-text">2.1.3 代码分析</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-单一继承"><span class="nav-text">2.2 单一继承</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-1-内存分析"><span class="nav-text">2.2.1 内存分析</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-2-对象模型"><span class="nav-text">2.2.2 对象模型</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-3-代码分析"><span class="nav-text">2.2.3 代码分析</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-3-虚继承1"><span class="nav-text">2.3 虚继承1</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-3-1-内存分析"><span class="nav-text">2.3.1 内存分析</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-3-2-对象模型"><span class="nav-text">2.3.2 对象模型</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-3-3-代码分析"><span class="nav-text">2.3.3 代码分析</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-4-虚继承2"><span class="nav-text">2.4 虚继承2</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-4-1-内存分析"><span class="nav-text">2.4.1 内存分析</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-4-2-对象模型"><span class="nav-text">2.4.2 对象模型</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-4-3-代码分析"><span class="nav-text">2.4.3 代码分析</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-总结"><span class="nav-text">3. 总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="dumphex"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">dumphex</p>
+  <div class="site-description" itemprop="description">日拱一卒，功不唐捐。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">10</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">32</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/dumphex" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;dumphex" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/3151a9dcd169" title="简书 → https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;3151a9dcd169" rel="noopener" target="_blank"><i class="fa fa-fw fa-book"></i>简书</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/images/programmer_qrcode.jpg" title="Wechat → images&#x2F;programmer_qrcode.jpg"><i class="fa fa-fw fa-wechat"></i>Wechat</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/dumphex@163.com" title="E-Mail → dumphex@163.com"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">dumphex</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  </div>
+  <span class="post-meta-divider">|</span>
+  <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.7.1
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+  <script>
+    (function(){
+      var bp = document.createElement('script');
+      var curProtocol = window.location.protocol.split(':')[0];
+      bp.src = (curProtocol === 'https') ? 'https://zz.bdstatic.com/linksubmit/push.js' : 'http://push.zhanzhang.baidu.com/push.js';
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(bp, s);
+    })();
+  </script>
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
