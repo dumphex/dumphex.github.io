@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"dumphex.github.io","root":"/","scheme":"Gemini","version":"7.7.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文分析typeid的实现原理">
+<meta property="og:type" content="article">
+<meta property="og:title" content="typeid">
+<meta property="og:url" content="https://dumphex.github.io/2020/04/03/typeid/index.html">
+<meta property="og:site_name" content="程序员自我修养">
+<meta property="og:description" content="本文分析typeid的实现原理">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+<meta property="article:published_time" content="2020-04-03T07:09:08.000Z">
+<meta property="article:modified_time" content="2020-04-03T07:20:10.845Z">
+<meta property="article:author" content="dumphex">
+<meta property="article:tag" content="typeid">
+<meta property="article:tag" content="type_info">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+
+<link rel="canonical" href="https://dumphex.github.io/2020/04/03/typeid/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true
+  };
+</script>
+
+  <title>typeid | 程序员自我修养</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">程序员自我修养</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-sitemap">
+
+    <a href="/sitemap.xml" rel="section"><i class="fa fa-fw fa-sitemap"></i>站点地图</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+
+</nav>
+  <div class="site-search">
+    <div class="popup search-popup">
+    <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocorrect="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result"></div>
+
+</div>
+<div class="search-pop-overlay"></div>
+
+  </div>
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://dumphex.github.io/2020/04/03/typeid/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="dumphex">
+      <meta itemprop="description" content="日拱一卒，功不唐捐。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="程序员自我修养">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          typeid
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-04-03 15:09:08 / 修改时间：15:20:10" itemprop="dateCreated datePublished" datetime="2020-04-03T15:09:08+08:00">2020-04-03</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/C-C/" itemprop="url" rel="index">
+                    <span itemprop="name">C/C++</span>
+                  </a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文分析typeid的实现原理</p>
+<a id="more"></a>
+
+<h2 id="1-前言"><a href="#1-前言" class="headerlink" title="1. 前言"></a>1. 前言</h2><h3 id="1-1-typeid"><a href="#1-1-typeid" class="headerlink" title="1.1 typeid"></a>1.1 typeid</h3><p>C++里面的typeid是个<strong>运算符</strong>，返回一个<a href="http://www.cplusplus.com/reference/typeinfo/type_info/" target="_blank" rel="noopener">std::type_info</a>常对象的引用，用于标识对象所属的类型。</p>
+<h3 id="1-2-std-type-info"><a href="#1-2-std-type-info" class="headerlink" title="1.2 std::type_info"></a>1.2 std::type_info</h3><ul>
+<li>实现位于/usr/include/c++/7/typeinfo</li>
+<li>析构函数为virtual</li>
+<li>有一个保护成员const char *__name, 指向对象的类型名称</li>
+<li>可以通过name()方法打印出对象的真实类型.<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">const char* name() const _GLIBCXX_NOEXCEPT</span><br><span class="line">&#123; return __name[0] &#x3D;&#x3D; &#39;*&#39; ? __name + 1 : __name; &#125;</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<h2 id="2-调试分析"><a href="#2-调试分析" class="headerlink" title="2. 调试分析"></a>2. 调试分析</h2><h3 id="2-1-测试环境"><a href="#2-1-测试环境" class="headerlink" title="2.1 测试环境"></a>2.1 测试环境</h3><ul>
+<li>Linux ubuntu18arm64 4.15.0-76-generic #86-Ubuntu SMP Fri Jan 17 17:25:58 UTC 2020 aarch64 aarch64 aarch64 GNU/Linux</li>
+<li>gcc version 7.4.0 (Ubuntu/Linaro 7.4.0-1ubuntu1~18.04.1)</li>
+<li>C++11</li>
+</ul>
+<h3 id="2-2-基本数据类型"><a href="#2-2-基本数据类型" class="headerlink" title="2.2 基本数据类型"></a>2.2 基本数据类型</h3><p>测试代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PRINT(x) std::cout &lt;&lt; <span class="meta-string">"typeid("</span>#x<span class="meta-string">").name() = \""</span> &lt;&lt; typeid(x).name() &lt;&lt; <span class="meta-string">"\""</span> &lt;&lt; std::endl;</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">test_fundamental_type</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="keyword">int</span> i = <span class="number">1</span>;</span><br><span class="line">  <span class="keyword">int</span> *p = &amp;i;</span><br><span class="line">  <span class="keyword">const</span> <span class="keyword">float</span> f = <span class="number">2.0</span>;</span><br><span class="line">  <span class="keyword">volatile</span> <span class="keyword">double</span> d = <span class="number">3.0</span>;</span><br><span class="line"></span><br><span class="line">  PRINT(i);</span><br><span class="line">  PRINT(p);</span><br><span class="line">  PRINT(f);</span><br><span class="line">  PRINT(d);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>运行结果</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">typeid(i).name() = "i"</span><br><span class="line">typeid(p).name() = "Pi"</span><br><span class="line">typeid(f).name() = "f"</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，返回的类型名字中const/volatile等限定符都不存在了。</p>
+<p>下面以变量i为例， 描述typeid(i).name()的实现原理.</p>
+<p>汇编代码如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">... ...</span><br><span class="line">0x0000aaaaaaaab504 &lt;+64&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">0x0000aaaaaaaab508 &lt;+68&gt;:	ldr	x0, [x0, #3984]</span><br><span class="line">0x0000aaaaaaaab50c &lt;+72&gt;:	bl	0xaaaaaaaab840 &lt;std::type_info::name() const&gt;</span><br><span class="line">... ...</span><br></pre></td></tr></table></figure>
+
+<p>获取std::type_info对象地址</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;1xg 0xaaaaaaabc000 + 3984</span><br><span class="line">0xaaaaaaabcf90:	0x0000fffff7fc3d90</span><br></pre></td></tr></table></figure>
+
+<p>查看std::type_info对象</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;2xg 0x0000fffff7fc3d90</span><br><span class="line">0xfffff7fc3d90 &lt;_ZTIi&gt;:	0x0000fffff7fc38c0	0x0000fffff7f771c0</span><br></pre></td></tr></table></figure>
+
+<p>查看类型名称</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">(gdb) p (char*)0x0000fffff7f771c0</span><br><span class="line">$1 &#x3D; 0xfffff7f771c0 &lt;typeinfo name for int&gt; &quot;i&quot;</span><br></pre></td></tr></table></figure>
+
+<p>变量i的type_info对象及其name, 位于libstdc++.so</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">... ...</span><br><span class="line">fffff7e3e000-fffff7fb2000 r-xp 00000000 fd:00 1311408                    /usr/lib/aarch64-linux-gnu/libstdc++.so.6.0.25</span><br><span class="line">fffff7fb2000-fffff7fc2000 ---p 00174000 fd:00 1311408                    /usr/lib/aarch64-linux-gnu/libstdc++.so.6.0.25</span><br><span class="line">fffff7fc2000-fffff7fcc000 r--p 00174000 fd:00 1311408                    /usr/lib/aarch64-linux-gnu/libstdc++.so.6.0.25</span><br><span class="line">fffff7fcc000-fffff7fce000 rw-p 0017e000 fd:00 1311408                    /usr/lib/aarch64-linux-gnu/libstdc++.so.6.0.25</span><br><span class="line">... ...</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-3-类型确定的类类型"><a href="#2-3-类型确定的类类型" class="headerlink" title="2.3 类型确定的类类型"></a>2.3 类型确定的类类型</h3><p>测试代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Derived d;</span><br><span class="line">PRINT(d);</span><br></pre></td></tr></table></figure>
+
+<p>运行结果</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">typeid(d).name() = "7Derived"</span><br></pre></td></tr></table></figure>
+
+<p>汇编代码如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">... ...</span><br><span class="line">0x0000aaaaaaaab68c &lt;+64&gt;:	adrp	x0, 0xaaaaaaabc000</span><br><span class="line">0x0000aaaaaaaab690 &lt;+68&gt;:	add	x0, x0, #0xcb0</span><br><span class="line">0x0000aaaaaaaab694 &lt;+72&gt;:	bl	0xaaaaaaaab840 &lt;std::type_info::name() const&gt;</span><br><span class="line">... ...</span><br></pre></td></tr></table></figure>
+
+<p>查看对象d的std::type_info对象</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;2xg 0xaaaaaaabc000 + 0xcb0</span><br><span class="line">0xaaaaaaabccb0 &lt;_ZTI7Derived&gt;:	0x0000fffff7fc4278	0x0000aaaaaaaabab8</span><br></pre></td></tr></table></figure>
+
+<p>查看类型名称</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">(gdb) p (char*)0x0000aaaaaaaabab8</span><br><span class="line">$2 &#x3D; 0xaaaaaaaabab8 &lt;typeinfo name for Derived&gt; &quot;7Derived&quot;</span><br></pre></td></tr></table></figure>
+
+<p>编译器在编译期间已经知道对象d的std::type_info对象地址</p>
+<h3 id="2-4-类型不确定的类类型"><a href="#2-4-类型不确定的类类型" class="headerlink" title="2.4 类型不确定的类类型"></a>2.4 类型不确定的类类型</h3><p>基类指针或引用, 无法确定当前对象是Base对象还是Derived对象.</p>
+<p>测试代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Base *pb = &amp;d;</span><br><span class="line">PRINT(*pb);</span><br></pre></td></tr></table></figure>
+
+<p>运行结果</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">typeid(*pb).name() = "7Derived"</span><br></pre></td></tr></table></figure>
+
+<p>汇编代码如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">... ...</span><br><span class="line">0x0000aaaaaaaab6f4 &lt;+168&gt;:	ldr	x0, [x29, #32]</span><br><span class="line">0x0000aaaaaaaab6f8 &lt;+172&gt;:	cmp	x0, #0x0</span><br><span class="line">0x0000aaaaaaaab6fc &lt;+176&gt;:	b.eq	0xaaaaaaaab71c &lt;test_class_type()+208&gt;  &#x2F;&#x2F; b.none</span><br><span class="line">0x0000aaaaaaaab700 &lt;+180&gt;:	ldr	x0, [x0]</span><br><span class="line">0x0000aaaaaaaab704 &lt;+184&gt;:	ldur	x0, [x0, #-8]</span><br><span class="line">0x0000aaaaaaaab708 &lt;+188&gt;:	bl	0xaaaaaaaab840 &lt;std::type_info::name() const&gt;</span><br><span class="line">0x0000aaaaaaaab70c &lt;+192&gt;:	mov	x1, x0</span><br><span class="line">0x0000aaaaaaaab710 &lt;+196&gt;:	mov	x0, x19</span><br><span class="line">0x0000aaaaaaaab714 &lt;+200&gt;:	bl	0xaaaaaaaab330 &lt;_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc@plt&gt;</span><br><span class="line">0x0000aaaaaaaab718 &lt;+204&gt;:	b	0xaaaaaaaab720 &lt;test_class_type()+212&gt;</span><br><span class="line">0x0000aaaaaaaab71c &lt;+208&gt;:	bl	0xaaaaaaaab350 &lt;__cxa_bad_typeid@plt&gt;</span><br><span class="line">... ...</span><br></pre></td></tr></table></figure>
+
+<p>typeid(*pb)的实现流程如下</p>
+<ul>
+<li><p>先获取*pb对象的vptr</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;4xg 0xfffffffff220 + 32</span><br><span class="line">0xfffffffff240:	0x0000fffffffff248	0x0000aaaaaaabcc80</span><br><span class="line">0xfffffffff250:	0x0000000000000000	0xa70531c2abcbb300</span><br><span class="line"></span><br><span class="line">(gdb) x&#x2F;1xg 0x0000fffffffff248</span><br><span class="line">0xfffffffff248:	0x0000aaaaaaabcc80</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>再读取vtable[-1], 获取std::type_info对象</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">(gdb) x&#x2F;1xg 0x0000aaaaaaabcc80 - 8</span><br><span class="line">0xaaaaaaabcc78 &lt;_ZTV7Derived+8&gt;:	0x0000aaaaaaabccb0</span><br><span class="line"></span><br><span class="line">(gdb) x&#x2F;2xg 0x0000aaaaaaabccb0</span><br><span class="line">0xaaaaaaabccb0 &lt;_ZTI7Derived&gt;:	0x0000fffff7fc4278	0x0000aaaaaaaabab8</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>查看类型名称</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">(gdb) p (char *)0x0000aaaaaaaabab8</span><br><span class="line">$3 &#x3D; 0xaaaaaaaabab8 &lt;typeinfo name for Derived&gt; &quot;7Derived&quot;</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<h2 id="3-总结"><a href="#3-总结" class="headerlink" title="3. 总结"></a>3. 总结</h2><ul>
+<li>对<strong>基本数据类型</strong>或<strong>类型确定的类类型</strong>, typeid(obj)对应的std::type_info对象地址在<strong>编译期间</strong>已经确定</li>
+<li>对<strong>类型不确定的类类型</strong>(基类指针或引用, 多态), typeid(obj)是<strong>运行期间</strong>通过当前对象找到vptr, 最后在vtable[-1]找到obj对应的std::type_info对象地址</li>
+</ul>
+<hr>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg" alt="程序员自我修养"></p>
+<center>
+程序员自我修养(ID: dumphex)
+</center>
+
+<hr>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div>坚持技术原创，感谢您的支持！</div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpg" alt="dumphex 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpg" alt="dumphex 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>dumphex
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://dumphex.github.io/2020/04/03/typeid/" title="typeid">https://dumphex.github.io/2020/04/03/typeid/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fa fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/typeid/" rel="tag"># typeid</a>
+              <a href="/tags/type-info/" rel="tag"># type_info</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/03/27/cpp-object-model/" rel="prev" title="探索C++对象模型">
+      <i class="fa fa-chevron-left"></i> 探索C++对象模型
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let activeClass = CONFIG.comments.activeClass;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-前言"><span class="nav-text">1. 前言</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-typeid"><span class="nav-text">1.1 typeid</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-std-type-info"><span class="nav-text">1.2 std::type_info</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-调试分析"><span class="nav-text">2. 调试分析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-测试环境"><span class="nav-text">2.1 测试环境</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-基本数据类型"><span class="nav-text">2.2 基本数据类型</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-3-类型确定的类类型"><span class="nav-text">2.3 类型确定的类类型</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-4-类型不确定的类类型"><span class="nav-text">2.4 类型不确定的类类型</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-总结"><span class="nav-text">3. 总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="dumphex"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">dumphex</p>
+  <div class="site-description" itemprop="description">日拱一卒，功不唐捐。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">11</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">34</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/dumphex" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;dumphex" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/3151a9dcd169" title="简书 → https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;3151a9dcd169" rel="noopener" target="_blank"><i class="fa fa-fw fa-book"></i>简书</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/images/programmer_qrcode.jpg" title="Wechat → images&#x2F;programmer_qrcode.jpg"><i class="fa fa-fw fa-wechat"></i>Wechat</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/dumphex@163.com" title="E-Mail → dumphex@163.com"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">dumphex</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  </div>
+  <span class="post-meta-divider">|</span>
+  <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.7.1
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+  <script>
+    (function(){
+      var bp = document.createElement('script');
+      var curProtocol = window.location.protocol.split(':')[0];
+      bp.src = (curProtocol === 'https') ? 'https://zz.bdstatic.com/linksubmit/push.js' : 'http://push.zhanzhang.baidu.com/push.js';
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(bp, s);
+    })();
+  </script>
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
