@@ -2,6 +2,13 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://dumphex.github.io/2020/04/18/singleton/</loc>
+    
+    <lastmod>2020-04-18T09:32:31.776Z</lastmod>
+    
+  </url>
+  
+  <url>
     <loc>https://dumphex.github.io/2020/04/09/NEON/</loc>
     
     <lastmod>2020-04-09T02:44:06.434Z</lastmod>
@@ -93,14 +100,14 @@
   </url>
   
   <url>
-    <loc>https://dumphex.github.io/categories/index.html</loc>
+    <loc>https://dumphex.github.io/tags/index.html</loc>
     
     <lastmod>2020-02-14T13:08:27.601Z</lastmod>
     
   </url>
   
   <url>
-    <loc>https://dumphex.github.io/tags/index.html</loc>
+    <loc>https://dumphex.github.io/categories/index.html</loc>
     
     <lastmod>2020-02-14T13:08:27.601Z</lastmod>
     
