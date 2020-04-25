@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
+    <loc>https://dumphex.github.io/2020/04/25/multi-threading/</loc>
+    <lastmod>2020-04-25</lastmod>
+  </url>  <url>
     <loc>https://dumphex.github.io/2020/04/18/singleton/</loc>
     <lastmod>2020-04-18</lastmod>
   </url>  <url>
@@ -31,10 +34,10 @@
     <loc>https://dumphex.github.io/2020/02/25/segment_fault/</loc>
     <lastmod>2020-02-25</lastmod>
   </url>  <url>
-    <loc>https://dumphex.github.io/2020/02/19/reference/</loc>
+    <loc>https://dumphex.github.io/2020/02/17/stack_backtrace/</loc>
     <lastmod>2020-02-25</lastmod>
   </url>  <url>
-    <loc>https://dumphex.github.io/2020/02/17/stack_backtrace/</loc>
+    <loc>https://dumphex.github.io/2020/02/19/reference/</loc>
     <lastmod>2020-02-25</lastmod>
   </url>  <url>
     <loc>https://dumphex.github.io/2020/02/15/kdump/</loc>

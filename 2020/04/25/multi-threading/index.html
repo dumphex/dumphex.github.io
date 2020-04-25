@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"dumphex.github.io","root":"/","scheme":"Gemini","version":"7.7.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":true,"scrollpercent":true},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="并发编程中, 当多线程访问共享资源时, 会产生竞争条件(race condition).">
+<meta property="og:type" content="article">
+<meta property="og:title" content="多线程访问共享资源">
+<meta property="og:url" content="https://dumphex.github.io/2020/04/25/multi-threading/index.html">
+<meta property="og:site_name" content="程序员自我修养">
+<meta property="og:description" content="并发编程中, 当多线程访问共享资源时, 会产生竞争条件(race condition).">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+<meta property="article:published_time" content="2020-04-25T07:07:28.000Z">
+<meta property="article:modified_time" content="2020-04-25T07:10:58.668Z">
+<meta property="article:author" content="dumphex">
+<meta property="article:tag" content="多线程">
+<meta property="article:tag" content="volatile">
+<meta property="article:tag" content="mutex">
+<meta property="article:tag" content="atomic">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg">
+
+<link rel="canonical" href="https://dumphex.github.io/2020/04/25/multi-threading/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true
+  };
+</script>
+
+  <title>多线程访问共享资源 | 程序员自我修养</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">程序员自我修养</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-sitemap">
+
+    <a href="/sitemap.xml" rel="section"><i class="fa fa-fw fa-sitemap"></i>站点地图</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+
+</nav>
+  <div class="site-search">
+    <div class="popup search-popup">
+    <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocorrect="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result"></div>
+
+</div>
+<div class="search-pop-overlay"></div>
+
+  </div>
+</div>
+    </header>
+
+    
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://dumphex.github.io/2020/04/25/multi-threading/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="dumphex">
+      <meta itemprop="description" content="日拱一卒，功不唐捐。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="程序员自我修养">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          多线程访问共享资源
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-04-25 15:07:28 / 修改时间：15:10:58" itemprop="dateCreated datePublished" datetime="2020-04-25T15:07:28+08:00">2020-04-25</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/C-C/" itemprop="url" rel="index">
+                    <span itemprop="name">C/C++</span>
+                  </a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>并发编程中, 当多线程访问共享资源时, 会产生竞争条件(race condition). </p>
+<a id="more"></a>
+
+<h2 id="1-测试"><a href="#1-测试" class="headerlink" title="1. 测试"></a>1. 测试</h2><p>Base作为抽象基类, 提供bench()测试接口: 启动两个线程, 一个线程对共享资源m_var执行加一操作, 另一个线程对m_var执行减一操作. 正常情况下, 最后m_var预期结果应为0</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Base</span> &#123;</span></span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  Base() &#123;&#125;</span><br><span class="line">  <span class="keyword">virtual</span> ~Base() &#123;&#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">iplus</span><span class="params">(<span class="keyword">int</span> count)</span> </span>= <span class="number">0</span>;</span><br><span class="line">  <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">iminus</span><span class="params">(<span class="keyword">int</span> count)</span> </span>= <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">bench</span><span class="params">()</span> </span>&#123;</span><br><span class="line">     ScopedTiming st;</span><br><span class="line">     <span class="keyword">int</span> count = <span class="number">1000000</span>;</span><br><span class="line">     <span class="function"><span class="built_in">std</span>::thread <span class="title">t1</span><span class="params">(&amp;Base::iplus, <span class="keyword">this</span>, count)</span></span>;</span><br><span class="line">     <span class="function"><span class="built_in">std</span>::thread <span class="title">t2</span><span class="params">(&amp;Base::iminus, <span class="keyword">this</span>, count)</span></span>;</span><br><span class="line">     t1.join();</span><br><span class="line">     t2.join();</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>Base基类派生出4个派生类, 对应4种不同的实现方案</p>
+<ul>
+<li>Derived: 对共享资源不加任何保护</li>
+<li>DerivedVolatile: 对共享资源添加volatile关键字修饰</li>
+<li>DerivedMutex: 对共享资源添加std::mutex互斥访问</li>
+<li>DerivedAtomic: 将共享资源设置为原子类型</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">graph BT</span><br><span class="line">A[Base]</span><br><span class="line">B1[Derived] --&gt; A</span><br><span class="line">B2[DerivedVolatile] --&gt; A</span><br><span class="line">B3[DerivedMutex]  --&gt; A</span><br><span class="line">B4[DerivedAtomic] --&gt; A</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-1-测试环境"><a href="#1-1-测试环境" class="headerlink" title="1.1 测试环境"></a>1.1 测试环境</h3><ul>
+<li>Linux ubuntu18arm64 4.15.0-76-generic #86-Ubuntu SMP Fri Jan 17 17:25:58 UTC 2020 aarch64 aarch64 aarch64 GNU/Linux</li>
+<li>gcc version 7.4.0 (Ubuntu/Linaro 7.4.0-1ubuntu1~18.04.1)</li>
+<li>C++11</li>
+</ul>
+<h3 id="1-2-测试结果"><a href="#1-2-测试结果" class="headerlink" title="1.2 测试结果"></a>1.2 测试结果</h3><p><strong>Debug版本</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">$ .&#x2F;out&#x2F;bin&#x2F;atomic </span><br><span class="line">Derived : m_var &#x3D; 0</span><br><span class="line">ScopedTiming took 28 ms</span><br><span class="line">~Derived : m_var &#x3D; -90581</span><br><span class="line"></span><br><span class="line">DerivedVolatile : m_var &#x3D; 0</span><br><span class="line">ScopedTiming took 27 ms</span><br><span class="line">~DerivedVolatile : m_var &#x3D; 559126</span><br><span class="line"></span><br><span class="line">DerivedMutex : m_var &#x3D; 0</span><br><span class="line">ScopedTiming took 8748 ms</span><br><span class="line">~DerivedMutex : m_var &#x3D; 0</span><br><span class="line"></span><br><span class="line">DerivedAtomic : m_var &#x3D; 0</span><br><span class="line">ScopedTiming took 190 ms</span><br><span class="line">~DerivedAtomic : m_var &#x3D; 0</span><br></pre></td></tr></table></figure>
+
+<p><strong>Release版本</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">$ .&#x2F;out&#x2F;bin&#x2F;atomic </span><br><span class="line">Derived : m_var &#x3D; 0</span><br><span class="line">ScopedTiming took 5 ms</span><br><span class="line">~Derived : m_var &#x3D; 0</span><br><span class="line"></span><br><span class="line">DerivedVolatile : m_var &#x3D; 0</span><br><span class="line">ScopedTiming took 15 ms</span><br><span class="line">~DerivedVolatile : m_var &#x3D; 380629</span><br><span class="line"></span><br><span class="line">DerivedMutex : m_var &#x3D; 0</span><br><span class="line">ScopedTiming took 1922 ms</span><br><span class="line">~DerivedMutex : m_var &#x3D; 0</span><br><span class="line"></span><br><span class="line">DerivedAtomic : m_var &#x3D; 0</span><br><span class="line">ScopedTiming took 192 ms</span><br><span class="line">~DerivedAtomic : m_var &#x3D; 0</span><br></pre></td></tr></table></figure>
+
+<h2 id="2-实现方案"><a href="#2-实现方案" class="headerlink" title="2. 实现方案"></a>2. 实现方案</h2><h3 id="2-1-不加保护"><a href="#2-1-不加保护" class="headerlink" title="2.1 不加保护"></a>2.1 不加保护</h3><p>测试代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Derived</span> :</span> <span class="keyword">public</span> Base &#123;</span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  Derived() : m_var(<span class="number">0</span>) &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; __FUNCTION__ &lt;&lt; <span class="string">" : m_var = "</span> &lt;&lt; m_var &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  ~Derived() &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; __FUNCTION__ &lt;&lt; <span class="string">" : m_var = "</span> &lt;&lt; m_var &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span> &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">iplus</span><span class="params">(<span class="keyword">int</span> count)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (count--) &#123;</span><br><span class="line">      m_var++;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">iminus</span><span class="params">(<span class="keyword">int</span> count)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (count--) &#123;</span><br><span class="line">      m_var--;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="keyword">int</span> m_var;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>Release版本的汇编代码如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">00000000000027d8 &lt;_ZN7Derived5iplusEi&gt;:</span><br><span class="line">    27d8:       34000081        cbz     w1, 27e8 &lt;_ZN7Derived5iplusEi+0x10&gt;</span><br><span class="line">    27dc:       b9400802        ldr     w2, [x0, #8]</span><br><span class="line">    27e0:       0b020021        add     w1, w1, w2</span><br><span class="line">    27e4:       b9000801        str     w1, [x0, #8]</span><br><span class="line">    27e8:       d65f03c0        ret</span><br><span class="line">    27ec:       00000000        .inst   0x00000000 ; undefined</span><br><span class="line"></span><br><span class="line">00000000000027f0 &lt;_ZN7Derived6iminusEi&gt;:</span><br><span class="line">    27f0:       34000081        cbz     w1, 2800 &lt;_ZN7Derived6iminusEi+0x10&gt;</span><br><span class="line">    27f4:       b9400802        ldr     w2, [x0, #8]</span><br><span class="line">    27f8:       4b010041        sub     w1, w2, w1</span><br><span class="line">    27fc:       b9000801        str     w1, [x0, #8]</span><br><span class="line">    2800:       d65f03c0        ret</span><br><span class="line">    2804:       00000000        .inst   0x00000000 ; undefined</span><br></pre></td></tr></table></figure>
+
+<p>从两个函数的汇编代码来看</p>
+<ul>
+<li>由于iplus()/iminus()逻辑简单, 编译器在Release版本直接将while循环优化掉, 测试结果没有报错.</li>
+<li>从Debug版本测试结果来看, 多线程访问共享资源是有问题的.</li>
+</ul>
+<h3 id="2-2-volatile"><a href="#2-2-volatile" class="headerlink" title="2.2 volatile"></a>2.2 volatile</h3><p>该版本中, 在共享资源m_var前添加volatile关键字进行修饰.</p>
+<p>测试代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">DerivedVolatile</span> :</span> <span class="keyword">public</span> Base &#123;</span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  DerivedVolatile() : m_var(<span class="number">0</span>) &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; __FUNCTION__ &lt;&lt; <span class="string">" : m_var = "</span> &lt;&lt; m_var &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  ~DerivedVolatile() &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; __FUNCTION__ &lt;&lt; <span class="string">" : m_var = "</span> &lt;&lt; m_var &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span> &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">iplus</span><span class="params">(<span class="keyword">int</span> count)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (count--) &#123;</span><br><span class="line">      m_var++;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">iminus</span><span class="params">(<span class="keyword">int</span> count)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (count--) &#123;</span><br><span class="line">      m_var--;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="keyword">volatile</span> <span class="keyword">int</span> m_var;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line">0000000000002808 &lt;_ZN15DerivedVolatile5iplusEi&gt;:</span><br><span class="line">    2808:       51000422        sub     w2, w1, #0x1 </span><br><span class="line">    280c:       340000e1        cbz     w1, 2828 &lt;_ZN15DerivedVolatile5iplusEi+0x20&gt;</span><br><span class="line">    2810:       b9400801        ldr     w1, [x0, #8]</span><br><span class="line">    2814:       51000442        sub     w2, w2, #0x1 </span><br><span class="line">    2818:       3100045f        cmn     w2, #0x1 </span><br><span class="line">    281c:       11000421        add     w1, w1, #0x1 </span><br><span class="line">    2820:       b9000801        str     w1, [x0, #8]</span><br><span class="line">    2824:       54ffff61        b.ne    2810 &lt;_ZN15DerivedVolatile5iplusEi+0x8&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">    2828:       d65f03c0        ret</span><br><span class="line">    282c:       00000000        .inst   0x00000000 ; undefined</span><br><span class="line"></span><br><span class="line">0000000000002830 &lt;_ZN15DerivedVolatile6iminusEi&gt;:</span><br><span class="line">    2830:       51000422        sub     w2, w1, #0x1</span><br><span class="line">    2834:       340000e1        cbz     w1, 2850 &lt;_ZN15DerivedVolatile6iminusEi+0x20&gt;</span><br><span class="line">    2838:       b9400801        ldr     w1, [x0, #8]</span><br><span class="line">    283c:       51000442        sub     w2, w2, #0x1</span><br><span class="line">    2840:       3100045f        cmn     w2, #0x1</span><br><span class="line">    2844:       51000421        sub     w1, w1, #0x1</span><br><span class="line">    2848:       b9000801        str     w1, [x0, #8]</span><br><span class="line">    284c:       54ffff61        b.ne    2838 &lt;_ZN15DerivedVolatile6iminusEi+0x8&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">    2850:       d65f03c0        ret</span><br><span class="line">    2854:       00000000        .inst   0x00000000 ; undefined</span><br></pre></td></tr></table></figure>
+
+<p>从两个函数的汇编代码来看</p>
+<ul>
+<li>加了volatile关键字后, 编译器没有再进行激进的优化, 而是按照程序正常流程进行编译.</li>
+<li>Debug/Release版本测试结果都显示多线程计算结果错误</li>
+<li><strong>volatile只能防止编译器做优化, 不能保证原子性</strong>.</li>
+</ul>
+<h3 id="2-3-std-mutex"><a href="#2-3-std-mutex" class="headerlink" title="2.3 std::mutex"></a>2.3 std::mutex</h3><p>该版本中, 对共享资源m_var添加std::mutex互斥访问.</p>
+<p>测试代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">DerivedMutex</span> :</span> <span class="keyword">public</span> Base &#123;</span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  DerivedMutex() : m_var(<span class="number">0</span>) &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; __FUNCTION__ &lt;&lt; <span class="string">" : m_var = "</span> &lt;&lt; m_var &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  ~DerivedMutex() &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; __FUNCTION__ &lt;&lt; <span class="string">" : m_var = "</span> &lt;&lt; m_var &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span> &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">iplus</span><span class="params">(<span class="keyword">int</span> count)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (count--) &#123;</span><br><span class="line">      <span class="function"><span class="built_in">std</span>::lock_guard&lt;<span class="built_in">std</span>::mutex&gt; <span class="title">lck</span><span class="params">(m_mtx)</span></span>;</span><br><span class="line">      m_var++;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">iminus</span><span class="params">(<span class="keyword">int</span> count)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (count--) &#123;</span><br><span class="line">      <span class="function"><span class="built_in">std</span>::lock_guard&lt;<span class="built_in">std</span>::mutex&gt; <span class="title">lck</span><span class="params">(m_mtx)</span></span>;</span><br><span class="line">      m_var--;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="built_in">std</span>::mutex m_mtx;</span><br><span class="line">  <span class="keyword">int</span> m_var;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br></pre></td><td class="code"><pre><span class="line">0000000000002880 &lt;_ZN12DerivedMutex6iminusEi&gt;:</span><br><span class="line">    2880:       a9bd7bfd        stp     x29, x30, [sp, #-48]!</span><br><span class="line">    2884:       d0000082        adrp    x2, 14000 &lt;__FRAME_END__+0x10300&gt;</span><br><span class="line">    2888:       910003fd        mov     x29, sp</span><br><span class="line">    288c:       f947d042        ldr     x2, [x2, #4000]</span><br><span class="line">    2890:       f9000ff4        str     x20, [sp, #24]</span><br><span class="line">    2894:       aa0003f4        mov     x20, x0</span><br><span class="line">    2898:       b4000302        cbz     x2, 28f8 &lt;_ZN12DerivedMutex6iminusEi+0x78&gt;</span><br><span class="line">    289c:       f9000bb3        str     x19, [x29, #16]</span><br><span class="line">    28a0:       2a0103f3        mov     w19, w1</span><br><span class="line">    28a4:       f90013b5        str     x21, [x29, #32]</span><br><span class="line">    28a8:       91002015        add     x21, x0, #0x8</span><br><span class="line">    28ac:       34000173        cbz     w19, 28d8 &lt;_ZN12DerivedMutex6iminusEi+0x58&gt;</span><br><span class="line">    28b0:       aa1503e0        mov     x0, x21</span><br><span class="line">    28b4:       51000673        sub     w19, w19, #0x1</span><br><span class="line">    28b8:       97fffe26        bl      2150 &lt;pthread_mutex_lock@plt&gt;</span><br><span class="line">    28bc:       350002a0        cbnz    w0, 2910 &lt;_ZN12DerivedMutex6iminusEi+0x90&gt;</span><br><span class="line">    28c0:       b9403a81        ldr     w1, [x20, #56]</span><br><span class="line">    28c4:       aa1503e0        mov     x0, x21</span><br><span class="line">    28c8:       51000421        sub     w1, w1, #0x1</span><br><span class="line">    28cc:       b9003a81        str     w1, [x20, #56]</span><br><span class="line">    28d0:       97fffe30        bl      2190 &lt;pthread_mutex_unlock@plt&gt;</span><br><span class="line">    28d4:       35fffef3        cbnz    w19, 28b0 &lt;_ZN12DerivedMutex6iminusEi+0x30&gt;</span><br><span class="line">    28d8:       f9400bb3        ldr     x19, [x29, #16]</span><br><span class="line">    28dc:       f94013b5        ldr     x21, [x29, #32]</span><br><span class="line">    28e0:       f9400ff4        ldr     x20, [sp, #24]</span><br><span class="line">    28e4:       a8c37bfd        ldp     x29, x30, [sp], #48</span><br><span class="line">    28e8:       d65f03c0        ret</span><br><span class="line">    28ec:       b9403a80        ldr     w0, [x20, #56]</span><br><span class="line">    28f0:       51000400        sub     w0, w0, #0x1</span><br><span class="line">    28f4:       b9003a80        str     w0, [x20, #56]</span><br><span class="line">    28f8:       51000421        sub     w1, w1, #0x1</span><br><span class="line">    28fc:       3100043f        cmn     w1, #0x1</span><br><span class="line">    2900:       54ffff61        b.ne    28ec &lt;_ZN12DerivedMutex6iminusEi+0x6c&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">    2904:       f9400ff4        ldr     x20, [sp, #24]</span><br><span class="line">    2908:       a8c37bfd        ldp     x29, x30, [sp], #48</span><br><span class="line">    290c:       d65f03c0        ret</span><br><span class="line">    2910:       97fffe28        bl      21b0 &lt;_ZSt20__throw_system_errori@plt&gt;</span><br><span class="line">    2914:       00000000        .inst   0x00000000 ; undefined</span><br><span class="line"></span><br><span class="line">00000000000029b8 &lt;_ZN12DerivedMutex5iplusEi&gt;:</span><br><span class="line">    29b8:       a9bd7bfd        stp     x29, x30, [sp, #-48]!</span><br><span class="line">    29bc:       d0000082        adrp    x2, 14000 &lt;__FRAME_END__+0x10300&gt;</span><br><span class="line">    29c0:       910003fd        mov     x29, sp</span><br><span class="line">    29c4:       f947d042        ldr     x2, [x2, #4000]</span><br><span class="line">    29c8:       f9000ff4        str     x20, [sp, #24]</span><br><span class="line">    29cc:       aa0003f4        mov     x20, x0</span><br><span class="line">    29d0:       b4000302        cbz     x2, 2a30 &lt;_ZN12DerivedMutex5iplusEi+0x78&gt;</span><br><span class="line">    29d4:       f9000bb3        str     x19, [x29, #16]</span><br><span class="line">    29d8:       2a0103f3        mov     w19, w1</span><br><span class="line">    29dc:       f90013b5        str     x21, [x29, #32]</span><br><span class="line">    29e0:       91002015        add     x21, x0, #0x8</span><br><span class="line">    29e4:       34000173        cbz     w19, 2a10 &lt;_ZN12DerivedMutex5iplusEi+0x58&gt;</span><br><span class="line">    29e8:       aa1503e0        mov     x0, x21</span><br><span class="line">    29ec:       51000673        sub     w19, w19, #0x1</span><br><span class="line">    29f0:       97fffdd8        bl      2150 &lt;pthread_mutex_lock@plt&gt;</span><br><span class="line">    29f4:       350002a0        cbnz    w0, 2a48 &lt;_ZN12DerivedMutex5iplusEi+0x90&gt;</span><br><span class="line">    29f8:       b9403a81        ldr     w1, [x20, #56]</span><br><span class="line">    29fc:       aa1503e0        mov     x0, x21</span><br><span class="line">    2a00:       11000421        add     w1, w1, #0x1</span><br><span class="line">    2a04:       b9003a81        str     w1, [x20, #56]</span><br><span class="line">    2a08:       97fffde2        bl      2190 &lt;pthread_mutex_unlock@plt&gt;</span><br><span class="line">    2a0c:       35fffef3        cbnz    w19, 29e8 &lt;_ZN12DerivedMutex5iplusEi+0x30&gt;</span><br><span class="line">    2a10:       f9400bb3        ldr     x19, [x29, #16]</span><br><span class="line">    2a14:       f94013b5        ldr     x21, [x29, #32]</span><br><span class="line">    2a18:       f9400ff4        ldr     x20, [sp, #24]</span><br><span class="line">    2a1c:       a8c37bfd        ldp     x29, x30, [sp], #48</span><br><span class="line">    2a20:       d65f03c0        ret</span><br><span class="line">    2a24:       b9403a80        ldr     w0, [x20, #56]</span><br><span class="line">    2a28:       11000400        add     w0, w0, #0x1</span><br><span class="line">    2a2c:       b9003a80        str     w0, [x20, #56]</span><br><span class="line">    2a30:       51000421        sub     w1, w1, #0x1</span><br><span class="line">    2a34:       3100043f        cmn     w1, #0x1</span><br><span class="line">    2a38:       54ffff61        b.ne    2a24 &lt;_ZN12DerivedMutex5iplusEi+0x6c&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">    2a3c:       f9400ff4        ldr     x20, [sp, #24]</span><br><span class="line">    2a40:       a8c37bfd        ldp     x29, x30, [sp], #48</span><br><span class="line">    2a44:       d65f03c0        ret</span><br><span class="line">    2a48:       97fffdda        bl      21b0 &lt;_ZSt20__throw_system_errori@plt&gt;</span><br><span class="line">    2a4c:       00000000        .inst   0x00000000 ; undefined</span><br></pre></td></tr></table></figure>
+
+<p>从两个函数的汇编代码来看</p>
+<ul>
+<li>std::mutex对m_var互斥访问, 底层调用pthread_mutex_lock()/pthread_mutex_unlock()来实现.</li>
+<li>Debug/Release版本测试结果显示多线程计算结果符合预期</li>
+</ul>
+<h3 id="2-4-std-atomic"><a href="#2-4-std-atomic" class="headerlink" title="2.4 std::atomic"></a>2.4 std::atomic</h3><p>该版本, 直接将共享资源int m_var改为原子类型std::atomic<int> m_var.</p>
+<p>测试代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SEQ_CST</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">DerivedAtomic</span> :</span> <span class="keyword">public</span> Base &#123;</span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">  DerivedAtomic() : m_var(<span class="number">0</span>) &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; __FUNCTION__ &lt;&lt; <span class="string">" : m_var = "</span> &lt;&lt; m_var &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  ~DerivedAtomic() &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; __FUNCTION__ &lt;&lt; <span class="string">" : m_var = "</span> &lt;&lt; m_var &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span> &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">iplus</span><span class="params">(<span class="keyword">int</span> count)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (count--) &#123;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> SEQ_CST</span></span><br><span class="line">      m_var++;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line">      m_var.fetch_add(<span class="number">1</span>, <span class="built_in">std</span>::memory_order_relaxed);</span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">iminus</span><span class="params">(<span class="keyword">int</span> count)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (count--) &#123;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> SEQ_CST</span></span><br><span class="line">      m_var--;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line">      m_var.fetch_sub(<span class="number">1</span>, <span class="built_in">std</span>::memory_order_relaxed);</span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">private</span>:</span><br><span class="line">  <span class="built_in">std</span>::atomic&lt;<span class="keyword">int</span>&gt; m_var;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>反汇编如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">0000000000002918 &lt;_ZN13DerivedAtomic6iminusEi&gt;:</span><br><span class="line">    2918:       51000422        sub     w2, w1, #0x1</span><br><span class="line">    291c:       34000141        cbz     w1, 2944 &lt;_ZN13DerivedAtomic6iminusEi+0x2c&gt;</span><br><span class="line">    2920:       91002000        add     x0, x0, #0x8</span><br><span class="line">    2924:       d503201f        nop</span><br><span class="line">    2928:       885ffc01        ldaxr   w1, [x0]</span><br><span class="line">    292c:       51000421        sub     w1, w1, #0x1</span><br><span class="line">    2930:       8803fc01        stlxr   w3, w1, [x0]</span><br><span class="line">    2934:       35ffffa3        cbnz    w3, 2928 &lt;_ZN13DerivedAtomic6iminusEi+0x10&gt;</span><br><span class="line">    2938:       51000442        sub     w2, w2, #0x1</span><br><span class="line">    293c:       3100045f        cmn     w2, #0x1</span><br><span class="line">    2940:       54ffff41        b.ne    2928 &lt;_ZN13DerivedAtomic6iminusEi+0x10&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">    2944:       d65f03c0        ret</span><br><span class="line"></span><br><span class="line">0000000000002948 &lt;_ZN13DerivedAtomic5iplusEi&gt;:</span><br><span class="line">    2948:       51000422        sub     w2, w1, #0x1</span><br><span class="line">    294c:       34000141        cbz     w1, 2974 &lt;_ZN13DerivedAtomic5iplusEi+0x2c&gt;</span><br><span class="line">    2950:       91002000        add     x0, x0, #0x8</span><br><span class="line">    2954:       d503201f        nop</span><br><span class="line">    2958:       885ffc01        ldaxr   w1, [x0]</span><br><span class="line">    295c:       11000421        add     w1, w1, #0x1</span><br><span class="line">    2960:       8803fc01        stlxr   w3, w1, [x0]</span><br><span class="line">    2964:       35ffffa3        cbnz    w3, 2958 &lt;_ZN13DerivedAtomic5iplusEi+0x10&gt;</span><br><span class="line">    2968:       51000442        sub     w2, w2, #0x1</span><br><span class="line">    296c:       3100045f        cmn     w2, #0x1</span><br><span class="line">    2970:       54ffff41        b.ne    2958 &lt;_ZN13DerivedAtomic5iplusEi+0x10&gt;  &#x2F;&#x2F; b.any</span><br><span class="line">    2974:       d65f03c0        ret</span><br></pre></td></tr></table></figure>
+
+<p>从两个函数的汇编代码来看</p>
+<ul>
+<li>以iplus()函数为例,<br>m_var++操作, 对应RMW(Read-Modify-Write), ARM硬件平台默认(顺序一致性内存模型)使用ldaxr/stlxr原子指令保证原子操作, 这里写回的实现有点类似spinlock</li>
+<li>Debug/Release版本测试结果显示多线程计算结果符合预期</li>
+</ul>
+<h2 id="3-总结"><a href="#3-总结" class="headerlink" title="3. 总结"></a>3. 总结</h2><table>
+<thead>
+<tr>
+<th>实现方案</th>
+<th>正确性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>不加保护</td>
+<td>无法保证程序的正确性</td>
+<td>多线程访问共享资源会产生竞争条件</td>
+</tr>
+<tr>
+<td>volatile</td>
+<td>无法保证程序的正确性</td>
+<td>volatile只能防止编译器进行优化, 无法保证原子性</td>
+</tr>
+<tr>
+<td>std::mutex</td>
+<td>能保证程序的正确性</td>
+<td>锁的粒度大, 影响性能</td>
+</tr>
+<tr>
+<td>std::atomic</td>
+<td>能保证程序的正确性</td>
+<td>性能较好</td>
+</tr>
+</tbody></table>
+<hr>
+<p><img src="http://ww1.sinaimg.cn/large/005Kyrj9ly1gbvsonijdoj3076076wex.jpg" alt="程序员自我修养"></p>
+<center>
+程序员自我修养(ID: dumphex)
+</center>
+
+<hr>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div>坚持技术原创，感谢您的支持！</div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpg" alt="dumphex 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpg" alt="dumphex 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>dumphex
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://dumphex.github.io/2020/04/25/multi-threading/" title="多线程访问共享资源">https://dumphex.github.io/2020/04/25/multi-threading/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fa fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%A4%9A%E7%BA%BF%E7%A8%8B/" rel="tag"># 多线程</a>
+              <a href="/tags/volatile/" rel="tag"># volatile</a>
+              <a href="/tags/mutex/" rel="tag"># mutex</a>
+              <a href="/tags/atomic/" rel="tag"># atomic</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/04/18/singleton/" rel="prev" title="单例模式">
+      <i class="fa fa-chevron-left"></i> 单例模式
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let activeClass = CONFIG.comments.activeClass;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-测试"><span class="nav-text">1. 测试</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-测试环境"><span class="nav-text">1.1 测试环境</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-测试结果"><span class="nav-text">1.2 测试结果</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-实现方案"><span class="nav-text">2. 实现方案</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-不加保护"><span class="nav-text">2.1 不加保护</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-volatile"><span class="nav-text">2.2 volatile</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-3-std-mutex"><span class="nav-text">2.3 std::mutex</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-4-std-atomic"><span class="nav-text">2.4 std::atomic</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-总结"><span class="nav-text">3. 总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="dumphex"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">dumphex</p>
+  <div class="site-description" itemprop="description">日拱一卒，功不唐捐。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">14</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">45</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/dumphex" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;dumphex" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/3151a9dcd169" title="简书 → https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;3151a9dcd169" rel="noopener" target="_blank"><i class="fa fa-fw fa-book"></i>简书</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/images/programmer_qrcode.jpg" title="Wechat → images&#x2F;programmer_qrcode.jpg"><i class="fa fa-fw fa-wechat"></i>Wechat</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="/dumphex@163.com" title="E-Mail → dumphex@163.com"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+
+      </div>
+        <div class="back-to-top motion-element">
+          <i class="fa fa-arrow-up"></i>
+          <span>0%</span>
+        </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">dumphex</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  </div>
+  <span class="post-meta-divider">|</span>
+  <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.7.1
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+  <script>
+    (function(){
+      var bp = document.createElement('script');
+      var curProtocol = window.location.protocol.split(':')[0];
+      bp.src = (curProtocol === 'https') ? 'https://zz.bdstatic.com/linksubmit/push.js' : 'http://push.zhanzhang.baidu.com/push.js';
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(bp, s);
+    })();
+  </script>
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
